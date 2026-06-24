@@ -1,0 +1,30 @@
+# Reasonix 工具配置（与项目无关）
+.reasonix/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# 环境变量（含 API Key）
+.env
+
+# 本地模型权重（体积大，应外置）
+knowledge_base/models/
+
+# BM25 索引序列化文件（运行时生成）
+*.pkl
+
+# ChromaDB 持久化数据（运行时生成）
+knowledge_base/index/chroma/
+
+# 应用日志
+knowledge_base/index/logs/
+logs/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
