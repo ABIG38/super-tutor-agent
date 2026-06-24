@@ -47,7 +47,7 @@
 
 四层结构：
 
-- **UI 层**：PySide6 原生桌面窗口，四区布局（知识库列表 + 问答 Tab + 规划 Tab + 学习进度面板）
+- **UI 层**：PySide6 原生桌面窗口，四区布局（知识库列表 + 问答 Tab + 规划 Tab + 学习进度面板）。每页顶部有课程选择器下拉框，当前选定课程作为检索/规划/追踪的上下文范围
 - **逻辑层**：`SuperTutorAgent` 单例统管四个子引擎（文档 / 检索 / 规划 / 学习追踪），纯 Python 显式调用
 - **基础设施层**：ChromaDB 本地持久化 + BM25 内存索引（pickle 持久化）+ LLM HTTP API + SQLite 学习进度数据库
 
@@ -76,7 +76,7 @@
    ├─ .md   → pathlib.read_text(encoding="utf-8")
    └─ .txt  → pathlib.read_text(encoding="utf-8")
     │
-    ▼ 返回 {"text": str, "metadata": {filename, page_count, size_bytes, extension, scanned: bool, doc_type: Literal["textbook","past_paper"]}}
+    ▼ 返回 {"text": str, "metadata": {filename, page_count, size_bytes, extension, scanned: bool, doc_type: Literal["textbook","past_paper"], course: str}}
 ```
 
 **重复上传检测**（在 orchestrator 层）：
@@ -204,7 +204,7 @@ if merged[0]["score"] < 0.3 → 返回空列表 → 跳过 LLM 调用 → 直接
 
 | 文件 | 职责 |
 |------|------|
-| `client.py` | `CitationLLM` — `generate_with_citation(query, chunks)` → 拼接 context + 调用 OpenAI 兼容 API → 流式返回。`generate_with_citation_stream(query, chunks)` 使用 `stream=True`，通过 Python generator yield token。`_format_context()` / `_build_messages()` |
+| `client.py` | `CitationLLM` — `generate_with_citation(query, chunks)` → 拼接 context + 调用 OpenAI 兼容 API → 流式返回。`generate_with_citation_stream(query, chunks)` 使用 `stream=True`。`ChunkForLLM` 含 `course` 字段用于溯源标注 |
 | `__init__.py` | 导出 `CitationLLM`、`CITATION_SYSTEM_PROMPT`、`LLMError` |
 
 **API 调用细节**：
@@ -227,6 +227,7 @@ if merged[0]["score"] < 0.3 → 返回空列表 → 跳过 LLM 调用 → 直接
 CREATE TABLE daily_task (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     plan_id TEXT NOT NULL,
+    course TEXT DEFAULT '',         -- 所属课程
     day_index INTEGER NOT NULL,
     task_content TEXT NOT NULL,
     chapter_ref TEXT,
@@ -254,8 +255,8 @@ class StudyTracker:
     - db_path: Path
     - _conn: sqlite3.Connection
 
-    init_plan(plan_id, tasks: list[dict]) -> None
-        创建新复习计划的每日任务记录（批量 INSERT）。
+    init_plan(plan_id, tasks: list[dict], course: str = "") -> None
+        创建新复习计划的每日任务记录（批量 INSERT，含 course 字段）。
 
     mark_task(plan_id, day_index, completed: bool) -> None
         标记某天任务为已完成/未完成。
@@ -263,14 +264,14 @@ class StudyTracker:
     get_plan_progress(plan_id) -> {"total": int, "completed": int, "pct": float}
         获取计划整体完成率。
 
-    get_completed_chapters(plan_id) -> list[str]
+    get_completed_chapters(plan_id, course: str = "") -> list[str]
         获取已完成的章节列表（用于下一次计划生成的"已学章节注入"）。
 
     record_qa(query, chunks_used, response, is_relevant, difficulty) -> None
         记录一次问答及用户反馈。
 
-    get_weak_chapters(threshold: float = 0.5) -> list[dict]
-        根据问答正确率/难度判断薄弱章节。
+    get_weak_chapters(threshold: float = 0.5, course: str = "") -> list[dict]
+        根据问答正确率/难度判断薄弱章节（限定 course）。
 
     close() -> None
         关闭数据库连接。
@@ -279,10 +280,10 @@ class StudyTracker:
 **与规划引擎的联动**：
 
 ```
-generate_plan(source_chunks, completed_chapters=None) -> plan_markdown
-    ① StudyPlanner 接收 get_completed_chapters() 结果
+generate_plan(source_chunks, course: str = "", completed_chapters=None) -> plan_markdown
+    ① StudyPlanner 接收 get_completed_chapters(course) 结果
     ② 注入 Prompt: 「用户已掌握以下章节：{completed}，请跳过这些章节，将剩余时间分配到未掌握的内容」
-    ③ LLM 生成调整后的计划
+    ③ LLM 生成调整后的计划（限定 course 内文档）
 ```
 
 **边界情况**：
@@ -355,10 +356,12 @@ class SuperTutorAgent:
         ② ChromaDB 更新 metadata：collection.update(where={"source": old_name}, set={"source": new_name})
         ③ BM25 侧过滤掉旧 source 后重建索引（或惰性：下次启动时自动反映）
 
-    ingest_document(file_path, doc_type: Literal["textbook", "past_paper"] = "textbook") → {"ok": bool, "chunk_count"?: int, "reason"?: str}
+    ingest_document(file_path, doc_type: Literal["textbook", "past_paper"] = "textbook", course: str = "") → {"ok": bool, "chunk_count"?: int, "reason"?: str}
+        ① metadata["course"] = course  # 写入课程名（空=未分类），后续检索/规划据此过滤
         ① 检查 self._sources 是否有同名 → 有则返回 ok=False, reason="duplicate"
         ② DocumentParser.parse(file_path) → {text, metadata}
-        ③ metadata["doc_type"] = doc_type  # 写入文档类型，后续检索/规划据此过滤
+        ③ metadata["course"] = course  # 写入课程名
+        ④ metadata["doc_type"] = doc_type  # 写入文档类型，后续检索/规划据此过滤
         ④ 如果 metadata.scanned → 返回 ok=False, reason="scanned_pdf"
         ⑤ chunk_document(text, metadata) → list[chunk]
         ⑥ vector_store.add_chunks(chunks)
@@ -374,16 +377,16 @@ class SuperTutorAgent:
         ④ os.remove(knowledge_base/raw/filename)  # 磁盘原始文件
 
     # ── 问答 ──
-    ask(question) → str
+    ask(question, course: str = "") → str
         ① 如果 self._sources 为空 → 返回 "请先上传文档"
-        ② merged = _hybrid_search(question)
+        ② merged = _hybrid_search(question, filter={"course": course} if course else None)
         ③ 如果 merged 为空 → 返回 "未在上传文档中找到相关内容"
         ④ answer = llm.generate_with_citation(question, merged)
         ⑤ 返回 answer
 
     # ── 检索 ──
     search_raw(query, top_k=10, filter: dict | None = None) → list[dict]
-        宽召回，给规划模块用（不做精排阈值过滤）。支持 filter 参数（如 {"doc_type": "textbook"}），
+        宽召回，给规划模块用（不做精排阈值过滤）。支持 filter 参数（如 {"doc_type": "textbook", "course": "数据结构"}），
         在 VectorStore 中通过 chroma_collection.query(where=filter) 实现，在 BM25 中通过后过滤实现。
 
     _hybrid_search(query) → list[dict] | []
@@ -548,9 +551,9 @@ class StudyPlanner:
 用户点击「重新生成计划」
     │
     ▼ WorkerThread
-   ├─ tracker.get_completed_chapters() → list[str]
+   ├─ tracker.get_completed_chapters(course=current_course) → list[str]
    ├─ 注入 Prompt：「用户已掌握：{chapters}，请跳过」
-   ├─ StudyPlanner.generate_plan(days, chunks, completed_chapters)
+   ├─ StudyPlanner.generate_plan(days, chunks, course=current_course, completed_chapters)
    └─ tracker.init_plan(new_plan_id, tasks)
     │
     └─ UI 渲染调整后的计划
@@ -741,6 +744,7 @@ class Settings(BaseSettings):
 | ㉑ | SQLite 数据库损坏 | `sqlite3.DatabaseError` / `sqlite3.OperationalError` | 自动备份为 `.corrupt` 后缀，重建空库，日志记录 | tracker.py |
 | ㉒ | 并发写入 SQLite | 多线程同时调用 mark_task | WAL 模式 + `retry_on_busy`（重试 3 次，间隔 50ms），仍失败则 `raise RuntimeError` | tracker.py |
 | ㉓ | 首次使用无进度 | 查询 `daily_task` 表为空 | `get_completed_chapters()` 返回空列表，规划引擎按原始流程执行，UI 显示「暂无学习记录，开始学习吧！」 | tracker.py + planner.py |
+| ㉔ | 跨课程文档上传 | 上传文档时指定 course | 按 course 写入 ChromaDB metadata + SQLite，检索时按 course 过滤，不同课程的 chunk 互不干扰 | orchestrator.py |
 
 ---
 
@@ -840,7 +844,7 @@ def ask(self, question: str) -> str:
 
 **方案**：利用 DeepSeek 的 Context Caching API——教材 System Prompt + context 前缀标记为可缓存，后续只传变化的用户提问。延迟降低 50%+，费用降低 60%+。
 
-**前置条件**（阶段一 `_build_messages()` 中必须落实）：缓存命中的前提是 context 前缀的每个 token 完全一致。因此在拼接 context 时，必须按**确定性顺序**拼接，不能依赖检索返回的原始顺序。推荐方案：在 `VectorStore.add_chunks()` 写入 ChromaDB 时，给每个 chunk 的 metadata 注入一个全局递增的 `chunk_global_id`（或基于文档上传时间+index 的复合排序键），context 拼接时按 `chunk_global_id` 升序排列。这既保证了缓存命中率，又保持了教材内容的物理阅读顺序。
+**前置条件**（阶段一 `_build_messages()` 中必须落实）：缓存命中的前提是 context 前缀的每个 token 完全一致。因此在拼接 context 时，必须按**确定性顺序**拼接，不能依赖检索返回的原始顺序。推荐方案：在 `VectorStore.add_chunks()` 写入 ChromaDB 时，给每个 chunk 的 metadata 注入课程名 `course`、全局递增的 `chunk_global_id`（或基于文档上传时间+index 的复合排序键），context 拼接时按 `chunk_global_id` 升序排列。这既保证了缓存命中率，又保持了教材内容的物理阅读顺序。
 
 ### 12.3 学习反馈闭环（F-14 / F-15）
 

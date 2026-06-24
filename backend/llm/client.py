@@ -53,11 +53,13 @@ class ChunkForLLM(BaseModel):
     Attributes:
         content: 文本内容。
         filename: 来源文件名。
+        course: 所属课程名（用于溯源标注）。
         score: 相关性分数（由 Reranker/融合策略决定）。
     """
 
     content: str
     filename: str
+    course: str = ""
     score: float = 0.0
 
 
@@ -294,10 +296,10 @@ class CitationLLM:
 
         格式:
             <context>
-            [来源: filename1]
+            [来源: filename1（课程: course1）]
             content1
 
-            [来源: filename2]
+            [来源: filename2（课程: course2）]
             content2
             </context>
 
@@ -314,7 +316,10 @@ class CitationLLM:
 
         parts: list[str] = ["<context>"]
         for chunk in chunks:
-            parts.append(f"[来源: {chunk.filename}]")
+            if chunk.course:
+                parts.append(f"[来源: {chunk.filename}（课程: {chunk.course}）]")
+            else:
+                parts.append(f"[来源: {chunk.filename}]")
             parts.append(chunk.content)
             parts.append("")  # 空行间隔
         parts.append("</context>")

@@ -35,6 +35,7 @@ class ParsedDocument(BaseModel):
         extension: 文件扩展名（小写，含点，如 ".pdf"）。
         scanned: PDF 是否为扫描件（无文字层）。
         doc_type: 文档用途类型 — "textbook"（教材）或 "past_paper"（真题）。
+        course: 所属课程名（空=未分类），用于跨课程文档隔离。
     """
 
     text: str
@@ -44,6 +45,7 @@ class ParsedDocument(BaseModel):
     extension: str
     scanned: bool = False
     doc_type: Literal["textbook", "past_paper"] = "textbook"
+    course: str = ""
 
 
 # ── 文档解析器 ──────────────────────────────────────────────────────────────
@@ -78,6 +80,7 @@ class DocumentParser:
         self,
         file_path: str | os.PathLike,
         doc_type: Literal["textbook", "past_paper"] = "textbook",
+        course: str = "",
     ) -> ParsedDocument:
         """解析文档入口。
 
@@ -90,6 +93,7 @@ class DocumentParser:
         Args:
             file_path: 文件路径（str 或 PathLike）。
             doc_type: 文档用途类型。
+            course: 所属课程名（空=未分类）。
 
         Returns:
             ParsedDocument: 包含解析文本和元数据。
@@ -121,6 +125,7 @@ class DocumentParser:
             extension=extension,
             scanned=extra_meta.get("scanned", False),
             doc_type=doc_type,
+            course=course,
         )
 
         logger.info(
