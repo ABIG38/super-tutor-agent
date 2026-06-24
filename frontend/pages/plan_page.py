@@ -141,6 +141,21 @@ class PlanPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.setSpacing(8)
 
+        self.btn_quiz = QPushButton("  📝  做题  ")
+        self.btn_quiz.setStyleSheet("""
+            QPushButton {
+                background-color: #6c63ff;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background-color: #7c73ff; }
+        """)
+        actions_layout.addWidget(self.btn_quiz)
+
         self.btn_regenerate = QPushButton("  🔄  重新生成（跳过已学）  ")
         self.btn_regenerate.setStyleSheet("""
             QPushButton {

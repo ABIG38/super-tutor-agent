@@ -59,30 +59,27 @@ class ChatPage(QWidget):
         """)
         layout.addWidget(self.browser, stretch=1)
 
-        # 反馈按钮
+        # 反馈按钮（预留测验入口）
         feedback_layout = QHBoxLayout()
         feedback_layout.setSpacing(6)
-        self.btn_useful = QPushButton("  👍 有用  ")
-        self.btn_useless = QPushButton("  👎 没用  ")
-        self.btn_irrelevant = QPushButton("  🤷 不相关  ")
-        for btn in (self.btn_useful, self.btn_useless, self.btn_irrelevant):
-            btn.setFixedHeight(28)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #1e2231;
-                    border: 1px solid #2a2e3d;
-                    border-radius: 6px;
-                    padding: 4px 12px;
-                    font-size: 12px;
-                    color: #8b8fa3;
-                }
-                QPushButton:hover {
-                    background-color: #242838;
-                    border-color: #6c63ff40;
-                    color: #e8eaf0;
-                }
-            """)
-            feedback_layout.addWidget(btn)
+        self.btn_quiz = QPushButton("  📝  做本章测验  ")
+        self.btn_quiz.setFixedHeight(28)
+        self.btn_quiz.setStyleSheet("""
+            QPushButton {
+                background-color: #1e2231;
+                border: 1px solid #2a2e3d;
+                border-radius: 6px;
+                padding: 4px 12px;
+                font-size: 12px;
+                color: #8b8fa3;
+            }
+            QPushButton:hover {
+                background-color: #242838;
+                border-color: #6c63ff40;
+                color: #e8eaf0;
+            }
+        """)
+        feedback_layout.addWidget(self.btn_quiz)
         feedback_layout.addStretch()
         layout.addLayout(feedback_layout)
 
