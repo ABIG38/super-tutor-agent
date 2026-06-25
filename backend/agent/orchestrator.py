@@ -76,7 +76,7 @@ class SuperTutorAgent:
             chunks = chunk_document(doc.text, {"filename": doc.filename, "course": course})
             self.vector_store.add_chunks(chunks)
             self.bm25.add_chunks(chunks)  # ★ F-09: 同步 BM25
-            self._sources[fn] = {"doc_type": doc.doc_type, "course": course}
+            self._sources[fn] = {"doc_type": doc.doc_type, "course": course, "file_path": str(Path(file_path).resolve())}
             return {"ok": True, "chunk_count": len(chunks), "filename": fn}
         except (FileNotFoundError, ValueError, PermissionError) as e:
             return {"ok": False, "reason": str(e)[:100], "filename": fn}
@@ -99,7 +99,17 @@ class SuperTutorAgent:
                 if not course or info.get("course") == course]
 
     def preview_document(self, filename: str) -> Dict:
-        return {"ok": False, "reason": "预览暂不支持"}  # 精简版暂不实现
+        """重新解析文档返回纯文本预览。"""
+        if filename not in self._sources:
+            return {"ok": False, "reason": "not_found"}
+        fp = self._sources[filename].get("file_path", "")
+        if not fp or not Path(fp).exists():
+            return {"ok": False, "reason": "文件已不存在，请重新上传"}
+        try:
+            doc = self.parser.parse(fp, course=self._sources[filename].get("course", ""))
+            return {"ok": True, "text": doc.text, "filename": doc.filename, "size": len(doc.text), "scanned": doc.scanned}
+        except Exception as e:
+            return {"ok": False, "reason": str(e)}
 
     # ── 问答 ──────────────────────────────────────
 
