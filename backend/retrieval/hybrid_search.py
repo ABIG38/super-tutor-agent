@@ -103,8 +103,8 @@ class HybridSearcher:
     # ── 同步 ────────────────────────────────────────────
 
     def sync_chunks(self, chunks: List[Dict]) -> None:
-        """文档索引后同步 BM25。"""
-        self.bm25.build_index(chunks)
+        """文档索引后同步 BM25（增量追加）。"""
+        self.bm25.add_chunks(chunks)
 
     def sync_delete(self, filename: str) -> None:
         """删除文档后同步 BM25。"""

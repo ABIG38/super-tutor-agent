@@ -41,41 +41,48 @@ class BM25Searcher:
 
     # ── 公开方法 ────────────────────────────────────────
 
-    def build_index(self, chunks: List[Dict]) -> None:
-        """全量重建 BM25 索引。
+    def add_chunks(self, chunks: List[Dict]) -> None:
+        """增量追加 chunks 到 BM25 索引。
 
         Args:
             chunks: 格式同 VectorStore.add_chunks 的输入。
                    每个元素 {"content": str, "metadata": {filename, course, ...}}
         """
         if not chunks:
-            logger.warning("BM25 build_index: 空语料，跳过")
-            self._index = None
             return
 
-        self._corpus = []
-        tokenized: List[List[str]] = []
+        new_entries = 0
+        tokenized_new: List[List[str]] = []
 
         for chunk in chunks:
             content = chunk.get("content", "")
             meta = chunk.get("metadata", {})
             chunk_id = self._make_id(meta)
 
+            # 已存在的 chunk：如果是被标记删除的，则恢复（取消删除）
+            existing = next((item for item in self._corpus if item["id"] == chunk_id), None)
+            if existing is not None:
+                if chunk_id in self._deleted_ids:
+                    self._deleted_ids.discard(chunk_id)
+                    logger.debug("BM25 恢复已删除 chunk: {}", chunk_id)
+                continue
+
             tokens = self._tokenize(content)
             if not tokens:
                 continue
 
             self._corpus.append({"id": chunk_id, "tokens": tokens, "meta": meta})
-            tokenized.append(tokens)
+            tokenized_new.append(tokens)
+            new_entries += 1
 
-        if not tokenized:
-            logger.warning("BM25 build_index: 分词后无有效 token")
-            self._index = None
+        if not tokenized_new:
+            logger.debug("BM25 add_chunks: 无新增（全部已存在或已恢复）")
             return
 
-        self._index = BM25Okapi(tokenized)
-        self._deleted_ids.clear()
-        logger.info("BM25 索引构建完成: {} 个文档", len(tokenized))
+        # 重建索引（rank_bm25 不支持增量，但 O(n) 级重建可接受）
+        all_tokenized = [item["tokens"] for item in self._corpus if item["tokens"]]
+        self._index = BM25Okapi(all_tokenized) if all_tokenized else None
+        logger.info("BM25 增量追加: +{} chunks，总计 {} chunks", new_entries, len(self._corpus))
 
     def search(self, query: str, top_k: int | None = None) -> List[Dict]:
         """BM25 关键词检索。
@@ -136,6 +143,9 @@ class BM25Searcher:
         """持久化分词后的语料到 pickle（原子写入防断电）。"""
         if not self._corpus:
             return
+        # ★ 清理已删除项再持久化
+        self._compact()
+        # ... rest unchanged
         self._corpus_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             # 临时文件 + 原子 rename（防断电损坏）
@@ -154,6 +164,15 @@ class BM25Searcher:
             logger.error("BM25 持久化失败: {}", e)
 
     # ── 内部 ────────────────────────────────────────────
+
+    def _compact(self) -> None:
+        """移除已标记删除的 corpus 条目并重建索引。"""
+        if not self._deleted_ids:
+            return
+        before = len(self._corpus)
+        self._corpus = [item for item in self._corpus if item["id"] not in self._deleted_ids]
+        self._deleted_ids.clear()
+        logger.info("BM25 compact: {} → {} chunks", before, len(self._corpus))
 
     def _load(self) -> None:
         """从 pickle 加载语料并重建索引。"""
