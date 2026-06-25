@@ -13,7 +13,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect
+from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, QThread, QTimer
 from PySide6.QtGui import QFont, QIcon, QAction, QPixmap, QPainter, QColor, QLinearGradient, QBrush, QPen
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
@@ -174,6 +174,10 @@ class SuperTutorWindow(QMainWindow):
         # ★ 修复 #2：创建后台工作线程（单例，所有页面共享）
         self.worker = BackgroundWorker()
 
+        # 模型下载线程（延迟初始化，启动检查时创建）
+        self._dl_thread: QThread | None = None
+        self._dl_worker = None
+
         self._setup_window()
         self._build_layout()
         self._apply_theme()
@@ -291,15 +295,11 @@ class SuperTutorWindow(QMainWindow):
     def _startup_check(self) -> None:
         """★ D3：启动时检查配置 + 模型，必要时弹引导对话框。"""
         from backend.config import settings as cfg
-        from backend.model_checker import check_models, download_all_missing
+        from backend.model_checker import check_models
         from pathlib import Path
 
-        issues: list[str] = []
-
         # 1. 检查 .env / API Key
-        env_path = Path(".env")
-        if not env_path.exists() or cfg.llm_api_key == "MISSING_KEY":
-            issues.append("API Key 未配置")
+        if not Path(".env").exists() or cfg.llm_api_key == "MISSING_KEY":
             reply = QMessageBox.question(
                 self, "⚙️ 首次配置",
                 "未检测到 API Key 配置。\n\n是否现在打开设置进行配置？",
@@ -311,37 +311,65 @@ class SuperTutorWindow(QMainWindow):
 
         # 2. 检查模型文件
         try:
-            model_result = check_models()
-            if not model_result.all_ok:
-                missing_text = ", ".join(model_result.missing + model_result.corrupted)
-                issues.append(f"模型缺失: {missing_text}")
-                reply = QMessageBox.question(
-                    self, "🤖 模型缺失",
-                    f"缺少以下 AI 模型文件:\n{missing_text}\n\n"
-                    "模型约需 1.2GB 空间，是否立即下载？\n（也可稍后在设置中下载）",
-                    QMessageBox.Yes | QMessageBox.No,
-                )
-                if reply == QMessageBox.Yes:
-                    self.status_label.setText("正在下载模型文件...")
-                    outcomes = download_all_missing(model_result)
-                    success = [n for n, ok in outcomes.items() if ok]
-                    failed = [n for n, ok in outcomes.items() if not ok]
-                    if success:
-                        self.status_label.setText(f"模型下载完成: {', '.join(success)}")
-                    if failed:
-                        QMessageBox.warning(
-                            self, "下载失败",
-                            f"以下模型下载失败:\n{', '.join(failed)}\n\n"
-                            "部分功能可能不可用，可稍后在设置中重试。",
-                        )
-                    else:
-                        self.status_label.setText("系统就绪")
+            result = check_models()
+            if not result.all_ok:
+                self._prompt_model_download(result)
+            else:
+                self.status_label.setText("系统就绪")
         except Exception as e:
             logger.warning("模型检测跳过: {}", e)
             self.status_label.setText("模型检测跳过（离线模式）")
 
-        if not issues:
-            self.status_label.setText("系统就绪")
+    def _prompt_model_download(self, result) -> None:
+        """弹窗询问是否下载缺失模型，是则启动后台下载线程。"""
+        missing = result.missing + result.corrupted
+        if not missing:
+            return
+
+        reply = QMessageBox.question(
+            self, "🤖 模型缺失",
+            f"缺少以下 AI 模型文件:\n{' '.join(missing)}\n\n"
+            "模型约需 1.2GB 空间，是否立即下载？\n（也可稍后在设置中下载）",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # ★ 修复：使用 ModelDownloadWorker (QThread) 带进度
+        from backend.model_downloader import ModelDownloadWorker
+
+        self.status_label.setText("正在准备下载...")
+
+        self._dl_thread = QThread(self)
+        self._dl_worker = ModelDownloadWorker()
+        self._dl_worker.moveToThread(self._dl_thread)
+
+        # 信号连接
+        self._dl_worker.progress.connect(self._on_dl_progress)
+        self._dl_worker.done.connect(self._on_dl_done)
+        self._dl_worker.error.connect(self._on_dl_error)
+
+        # 启动
+        self._dl_thread.started.connect(
+            lambda: self._dl_worker.download(missing)
+        )
+        self._dl_thread.finished.connect(self._dl_thread.deleteLater)
+        self._dl_thread.start()
+
+    def _on_dl_progress(self, prog) -> None:
+        """下载进度更新。"""
+        self.status_label.setText(prog.label)
+
+    def _on_dl_done(self, model_name: str) -> None:
+        """单个模型下载完成。"""
+        logger.info("模型下载完成: {}", model_name)
+
+    def _on_dl_error(self, model_name: str, reason: str) -> None:
+        """单个模型下载失败。"""
+        QMessageBox.warning(
+            self, "下载失败",
+            f"模型「{model_name}」下载失败:\n{reason}",
+        )
 
     def _apply_theme(self) -> None:
         self.setStyleSheet(f"""
