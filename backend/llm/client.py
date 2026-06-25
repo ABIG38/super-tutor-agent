@@ -490,5 +490,5 @@ class CitationLLM:
         """
         # 用异常类名判断，避免 import 所有 openai 异常类型
         exc_name = type(exc).__name__
-        retryable_names = {"APITimeoutError", "APIConnectionError", "APIError"}
+        retryable_names = {"APITimeoutError", "APIConnectionError"}
         return exc_name in retryable_names

@@ -310,6 +310,7 @@ class DocumentParser:
         """解析 .md 或 .txt 文件。
 
         使用 UTF-8 编码读取全部内容。
+        对于 GB2312/GBK 等中文编码，自动检测并回退。
 
         Args:
             path: .md 或 .txt 文件路径。
@@ -319,15 +320,25 @@ class DocumentParser:
         """
         logger.debug("开始解析文本文件: {}", path.name)
 
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            # 如果 UTF-8 解码失败，尝试用系统默认编码
-            logger.warning("UTF-8 解码失败，尝试 UTF-8-sig: {}", path.name)
-            text = path.read_text(encoding="utf-8-sig")
-        except Exception:
-            logger.opt(exception=True).error("读取文本文件失败: {}", path.name)
-            raise
+        # ★ 修复 #11：多重编码回退，覆盖常见中文编码
+        encodings = ["utf-8", "utf-8-sig", "gb2312", "gbk", "gb18030", "latin-1"]
+        last_error = None
+
+        for enc in encodings:
+            try:
+                text = path.read_text(encoding=enc)
+                if enc != "utf-8":
+                    logger.info("文本文件 {} 使用编码 {} 解析成功", path.name, enc)
+                break
+            except UnicodeDecodeError as e:
+                last_error = e
+                continue
+        else:
+            # 所有编码都失败
+            logger.opt(exception=True).error("无法解码文本文件: {}", path.name)
+            raise ValueError(
+                f"无法识别文件编码: {path.name}，请转换为 UTF-8 后重试"
+            ) from last_error
 
         logger.debug(
             "文本文件解析完成: {} | {} 字符",

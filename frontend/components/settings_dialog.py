@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QDialogButtonBox,
     QMessageBox,
+    QLabel,
 )
 
 
@@ -31,9 +32,9 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(480)
         self.setStyleSheet("""
             QDialog {
-                background-color: #181b24;
-                border: 1px solid #2a2e3d;
-                border-radius: 12px;
+                background-color: #050505;
+                border: 1px solid #1f1f22;
+                border-radius: 8px;
             }
         """)
         self._setup_ui()
@@ -74,26 +75,28 @@ class SettingsDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.setStyleSheet("""
             QPushButton {
-                background-color: #1e2231;
-                color: #e8eaf0;
-                border: 1px solid #2a2e3d;
-                border-radius: 8px;
-                padding: 8px 20px;
-                font-size: 13px;
-                font-weight: 500;
+                background-color: transparent;
+                color: #a0a0a5;
+                border: 1px solid #1f1f22;
+                border-radius: 4px;
+                padding: 8px 24px;
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 1px;
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #242838;
-                border-color: #6c63ff40;
+                background-color: #0f0f11;
+                color: #fcfcfc;
+                border-color: #ccff0040;
             }
             QPushButton[text="Save"], QPushButton[text="保存"] {
-                background-color: #6c63ff;
+                background-color: #ccff00;
                 border: none;
-                color: white;
+                color: #050505;
             }
             QPushButton[text="Save"]:hover, QPushButton[text="保存"]:hover {
-                background-color: #7c73ff;
+                background-color: #d9ff33;
             }
         """)
         buttons.accepted.connect(self._save_env)
@@ -102,25 +105,27 @@ class SettingsDialog(QDialog):
 
     def _label(self, text: str) -> QLabel:
         label = QLabel(text)
-        label.setStyleSheet("color: #8b8fa3; font-size: 13px; font-weight: 500;")
+        label.setStyleSheet("color: #55555a; font-size: 11px; font-weight: 700; letter-spacing: 1px;")
         return label
 
     def _input_style(self) -> str:
         return """
             QLineEdit {
-                background-color: #1c2030;
-                color: #e8eaf0;
-                border: 1px solid #2a2e3d;
-                border-radius: 8px;
-                padding: 10px 14px;
-                font-size: 13px;
+                background-color: #0f0f11;
+                color: #fcfcfc;
+                border: 1px solid #1f1f22;
+                border-radius: 4px;
+                padding: 8px 12px;
+                font-size: 12px;
                 min-height: 20px;
+                font-family: 'Inter', 'Segoe UI';
             }
             QLineEdit:focus {
-                border-color: #6c63ff;
+                border-color: #ccff00;
+                background-color: #141417;
             }
             QLineEdit::placeholder {
-                color: #5a5e72;
+                color: #55555a;
             }
         """
 

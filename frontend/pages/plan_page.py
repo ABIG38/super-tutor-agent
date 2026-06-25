@@ -1,101 +1,96 @@
 """
-规划+进度页 — 复习计划 + 打勾标记 + 进度条。
-
-布局:
-  ┌─ 参数设置（天数 + 小时 + [生成]）─────────────────┐
-  ├─ 每日任务卡片（可勾选 + 进度条）                   │
-  ├─ 整体进度条 + 已学章节                            │
-  ├─ [重新生成（跳过已学）]  [导出计划]               │
-  └──────────────────────────────────────────────┘
+规划+进度页 — 对接 BackgroundWorker 生成计划 + 打勾持久化。
 """
-
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QScrollArea,
-    QPushButton,
-    QLabel,
-    QCheckBox,
-    QProgressBar,
-    QSpinBox,
-    QFrame,
+    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
+    QPushButton, QLabel, QCheckBox, QProgressBar,
+    QSpinBox, QFrame, QMessageBox,
 )
 
 
 class PlanPage(QWidget):
-    """规划+进度 Tab 页。"""
+    """规划+进度 Tab 页 — 对接 BackgroundWorker。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._worker = None
+        self._course = ""
         self._setup_ui()
 
+    def set_worker(self, worker) -> None:
+        """★ 注入后台 worker 并连接信号。"""
+        self._worker = worker
+        self._worker.plan_done.connect(self._on_plan_done)
+        self._worker.plan_error.connect(self._on_plan_error)
+        self._worker.progress_loaded.connect(self._on_progress_loaded)
+
+    def set_course(self, course: str) -> None:
+        self._course = course
+
+    def refresh_progress(self, course: str = "") -> None:
+        """★ 切换课程时刷新进度。"""
+        self._course = course or self._course
+        if self._worker:
+            self._worker.load_progress(self._course)
+
+    # ── UI ────────────────────────────────────────
+
     def _setup_ui(self) -> None:
-        """构建 UI。"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(40, 32, 40, 32)
+        layout.setSpacing(16)
 
-        # ── 参数设置 ──────────────────────────────
-        params_layout = QHBoxLayout()
-        params_layout.setSpacing(8)
+        # 参数行
+        params = QHBoxLayout()
+        params.setSpacing(16)
 
-        params_layout.addWidget(QLabel("目标:"))
+        for label, suffix, default, rng in [
+            ("目 标", " 天", 30, (1, 365)),
+            ("每 日", " 小时", 2, (1, 16)),
+        ]:
+            lbl = QLabel(label)
+            lbl.setStyleSheet("color: #55555a; font-size: 10px; font-weight: 700; letter-spacing: 1px;")
+            params.addWidget(lbl)
+
         self.days_spin = QSpinBox()
         self.days_spin.setRange(1, 365)
         self.days_spin.setValue(30)
         self.days_spin.setSuffix(" 天")
-        self.days_spin.setStyleSheet("""
-            QSpinBox {
-                background-color: #1c2030;
-                color: #e8eaf0;
-                border: 1px solid #2a2e3d;
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-size: 13px;
-                min-height: 24px;
-            }
-            QSpinBox:focus { border-color: #6c63ff; }
-            QSpinBox::up-button, QSpinBox::down-button {
-                border: none;
-                background: transparent;
-                width: 20px;
-            }
-        """)
-        params_layout.addWidget(self.days_spin)
 
-        params_layout.addWidget(QLabel("每天:"))
         self.hours_spin = QSpinBox()
         self.hours_spin.setRange(1, 16)
         self.hours_spin.setValue(2)
         self.hours_spin.setSuffix(" 小时")
-        self.hours_spin.setStyleSheet(self.days_spin.styleSheet())
-        params_layout.addWidget(self.hours_spin)
 
-        self.btn_generate = QPushButton("  📅  生成计划  ")
-        self.btn_generate.setFixedHeight(38)
+        spin_style = """
+            QSpinBox { background-color: #0f0f11; color: #fcfcfc;
+                border: 1px solid #1f1f22; border-radius: 4px;
+                padding: 6px 12px; font-size: 12px; font-weight: 700; min-height: 28px; }
+            QSpinBox:focus { border-color: #ccff00; }
+            QSpinBox::up-button, QSpinBox::down-button { border: none; width: 0; }
+        """
+        self.days_spin.setStyleSheet(spin_style)
+        self.hours_spin.setStyleSheet(spin_style)
+        params.addWidget(self.days_spin)
+        params.addWidget(self.hours_spin)
+
+        self.btn_generate = QPushButton("生 成 计 划")
+        self.btn_generate.setFixedHeight(42)
         self.btn_generate.setStyleSheet("""
-            QPushButton {
-                background-color: #6c63ff;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 8px 24px;
-                font-size: 13px;
-                font-weight: 600;
-            }
-            QPushButton:hover { background-color: #7c73ff; }
-            QPushButton:pressed { background-color: #5b52e8; }
+            QPushButton { background-color: transparent; color: #ccff00;
+                border: 1px solid #ccff00; border-radius: 4px;
+                padding: 8px 24px; font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+            QPushButton:hover { background-color: #ccff00; color: #050505; }
         """)
-        params_layout.addWidget(self.btn_generate)
-        params_layout.addStretch()
+        self.btn_generate.clicked.connect(self._generate)
+        params.addWidget(self.btn_generate)
+        params.addStretch()
+        layout.addLayout(params)
 
-        layout.addLayout(params_layout)
-
-        # ── 计划内容 ──────────────────────────────
+        # 计划内容区
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -103,231 +98,248 @@ class PlanPage(QWidget):
 
         self.plan_container = QWidget()
         self.plan_layout = QVBoxLayout(self.plan_container)
-        self.plan_layout.setSpacing(8)
-        self.plan_layout.setContentsMargins(0, 0, 0, 0)
-
+        self.plan_layout.setSpacing(12)
+        self.plan_layout.setContentsMargins(0, 0, 16, 0)
         scroll.setWidget(self.plan_container)
         layout.addWidget(scroll, stretch=1)
 
-        # ── 整体进度 ──────────────────────────────
+        # 整体进度条
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("整体进度: %p%")
-        self.progress_bar.setFixedHeight(22)
+        self.progress_bar.setFormat("整体进度: 0%")
+        self.progress_bar.setFixedHeight(24)
         self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 6px;
-                text-align: center;
-                font-size: 12px;
-                color: #e8eaf0;
-                background-color: #1c2030;
-                font-weight: 500;
-            }
-            QProgressBar::chunk {
-                background-color: #6c63ff;
-                border-radius: 6px;
-            }
+            QProgressBar { border: none; border-radius: 4px; text-align: center;
+                font-size: 10px; color: #fcfcfc; background-color: #0f0f11;
+                font-weight: 800; letter-spacing: 1px; }
+            QProgressBar::chunk { background-color: #ccff00; border-radius: 4px; }
         """)
         layout.addWidget(self.progress_bar)
 
-        self.label_completed = QLabel("已掌握章节: 无")
-        self.label_completed.setStyleSheet("color: #5a5e72; font-size: 12px; padding: 2px 0;")
+        self.label_completed = QLabel("已掌握模块: 无")
+        self.label_completed.setStyleSheet(
+            "color: #55555a; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+        )
         layout.addWidget(self.label_completed)
 
-        # ── 操作按钮 ──────────────────────────────
-        actions_layout = QHBoxLayout()
-        actions_layout.setSpacing(8)
+        # 操作行
+        actions = QHBoxLayout()
+        actions.setSpacing(12)
 
-        self.btn_quiz = QPushButton("  📝  做题  ")
-        self.btn_quiz.setStyleSheet("""
-            QPushButton {
-                background-color: #6c63ff;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 8px 16px;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            QPushButton:hover { background-color: #7c73ff; }
-        """)
-        actions_layout.addWidget(self.btn_quiz)
-
-        self.btn_regenerate = QPushButton("  🔄  重新生成（跳过已学）  ")
-        self.btn_regenerate.setStyleSheet("""
-            QPushButton {
-                background-color: #1e2231;
-                border: 1px solid #2a2e3d;
-                border-radius: 8px;
-                padding: 8px 16px;
-                font-size: 12px;
-                color: #8b8fa3;
-            }
-            QPushButton:hover {
-                background-color: #242838;
-                color: #e8eaf0;
-                border-color: #6c63ff40;
-            }
-        """)
-        actions_layout.addWidget(self.btn_regenerate)
-
-        self.btn_export = QPushButton("  📤  导出计划  ")
-        self.btn_export.setStyleSheet(self.btn_regenerate.styleSheet())
-        actions_layout.addWidget(self.btn_export)
-        actions_layout.addStretch()
-
-        layout.addLayout(actions_layout)
-
-        # 初始空状态
-        self._show_empty_state()
-
-    def _show_empty_state(self) -> None:
-        """空状态提示。"""
-        self._clear_plan()
-        label = QLabel("📋 设置天数和学时，点击生成计划")
-        label.setStyleSheet("color: #5a5e72; font-size: 14px; padding: 60px 40px;")
-        label.setAlignment(Qt.AlignCenter)
-        self.plan_layout.addWidget(label)
-
-    def _clear_plan(self) -> None:
-        """清空计划内容。"""
-        while self.plan_layout.count():
-            item = self.plan_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-    def add_day_card(self, day: int, title: str, tasks: list[str]) -> QWidget:
-        """添加一天的任务卡片。
-
-        Args:
-            day: 第几天。
-            title: 标题（如 "第一章 绪论"）。
-            tasks: 任务列表。
-
-        Returns:
-            卡片 widget（可后续更新进度）。
+        self.btn_regenerate = QPushButton("重 新 生 成 (跳过已掌握)")
+        self.btn_regenerate.clicked.connect(self._generate)
+        btn2_style = """
+            QPushButton { background-color: transparent; border: 1px solid #1f1f22;
+                border-radius: 4px; padding: 10px 24px; font-size: 11px;
+                font-weight: 800; letter-spacing: 1px; color: #a0a0a5; }
+            QPushButton:hover { background-color: #0f0f11; color: #fcfcfc;
+                border-color: #ccff0040; }
         """
-        # 清除空状态
-        if self.plan_layout.count() == 1:
-            first = self.plan_layout.itemAt(0)
-            if first and first.widget():
-                text = first.widget().findChild(QLabel)
-                if text and "设置天数" in text.text():
-                    self._clear_plan()
+        self.btn_regenerate.setStyleSheet(btn2_style)
+        actions.addWidget(self.btn_regenerate)
 
-        card = QFrame()
-        card.setStyleSheet("""
-            QFrame {
-                background-color: #1c2030;
-                border: 1px solid #2a2e3d;
-                border-radius: 10px;
-                padding: 14px;
-            }
-        """)
+        self.btn_export = QPushButton("导 出 计 划")
+        self.btn_export.setStyleSheet(btn2_style)
+        self.btn_export.clicked.connect(self._export)
+        actions.addWidget(self.btn_export)
+        actions.addStretch()
+        layout.addLayout(actions)
 
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(4)
+        self._show_empty()
 
-        # 标题
-        header = QLabel(f"📅 第 {day} 天 — {title}")
-        header.setStyleSheet("font-weight: 600; font-size: 13px; color: #e8eaf0;")
-        card_layout.addWidget(header)
+    # ── 交互 ──────────────────────────────────────
 
-        # 任务列表
-        checked = 0
-        for task in tasks:
-            cb = QCheckBox(task)
-            cb.setStyleSheet("""
-                QCheckBox {
-                    font-size: 12px; color: #8b8fa3; padding: 3px 0;
-                    spacing: 8px;
-                }
-                QCheckBox::indicator {
-                    width: 16px; height: 16px;
-                    border: 2px solid #35394a;
-                    border-radius: 4px;
-                    background-color: transparent;
-                }
-                QCheckBox::indicator:checked {
-                    background-color: #6c63ff;
-                    border-color: #6c63ff;
-                }
-                QCheckBox::indicator:hover {
-                    border-color: #6c63ff80;
-                }
+    def _generate(self) -> None:
+        if self._worker is None:
+            return
+        self._clear_plan()
+        self.btn_generate.setEnabled(False)
+        self.btn_generate.setText("生成中...")
+        self._worker.plan_async(
+            self.days_spin.value(),
+            self.hours_spin.value(),
+            course=self._course,
+        )
+
+    def _export(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "导出计划", "study_plan.md", "Markdown (*.md)",
+        )
+        if path:
+            md = self._plan_to_markdown()
+            import pathlib
+            pathlib.Path(path).write_text(md, encoding="utf-8")
+            QMessageBox.information(self, "✅", "计划已导出")
+
+    # ── 信号回调 ──────────────────────────────────
+
+    def _on_plan_done(self, result: dict) -> None:
+        self.btn_generate.setEnabled(True)
+        self.btn_generate.setText("生 成 计 划")
+        if not result.get("ok"):
+            self._show_error(result.get("reason", "未知错误"))
+            return
+        tasks = result.get("tasks", [])
+        self._render_tasks(tasks)
+
+    def _on_plan_error(self, msg: str) -> None:
+        self.btn_generate.setEnabled(True)
+        self.btn_generate.setText("生 成 计 划")
+        self._show_error(msg)
+
+    def _on_progress_loaded(self, progress: dict) -> None:
+        """加载已有进度，渲染卡片并恢复打勾状态。"""
+        tasks = progress.get("tasks", [])
+        if not tasks:
+            self._show_empty()
+            return
+        self._render_tasks(tasks, from_db=True)
+
+    # ── 渲染 ──────────────────────────────────────
+
+    def _render_tasks(self, tasks: list[dict], from_db: bool = False) -> None:
+        self._clear_plan()
+        # 按 day 分组
+        days: dict[int, list[dict]] = {}
+        for t in tasks:
+            d = t.get("day", 1)
+            days.setdefault(d, []).append(t)
+
+        for day_num in sorted(days):
+            day_tasks = days[day_num]
+            card = QFrame()
+            card.setStyleSheet("""
+                QFrame { background-color: #050505; border: 1px solid #1f1f22;
+                    border-radius: 8px; padding: 16px; }
             """)
-            cb.toggled.connect(self._update_progress)
-            card_layout.addWidget(cb)
+            card_layout = QVBoxLayout(card)
+            card_layout.setSpacing(8)
 
-        # 分隔线
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setStyleSheet(f"color: #2a2e3d;")
-        card_layout.addWidget(line)
+            header = QLabel(f"第 {day_num} 天")
+            header.setStyleSheet(
+                "font-weight: 800; font-size: 11px; color: #fcfcfc; letter-spacing: 1px;"
+            )
+            card_layout.addWidget(header)
 
-        # 进度条
-        progress = QProgressBar()
-        progress.setRange(0, len(tasks))
-        progress.setValue(0)
-        progress.setTextVisible(True)
-        progress.setFormat(f"已完成 0/{len(tasks)}")
-        progress.setFixedHeight(14)
-        progress.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 4px;
-                text-align: center;
-                font-size: 11px;
-                color: #e8eaf0;
-                background-color: #1e2231;
-                font-weight: 500;
-            }
-            QProgressBar::chunk {
-                background-color: #34d399;
-                border-radius: 4px;
-            }
-        """)
-        card_layout.addWidget(progress)
+            done_count = 0
+            for task in day_tasks:
+                task_text = task.get("task", task.get("task_content", ""))
+                task_id = task.get("id")
+                is_done = bool(task.get("completed", False))
 
-        self.plan_layout.addWidget(card)
-        return card
+                cb = QCheckBox(task_text)
+                cb.setChecked(is_done)
+                cb.setStyleSheet("""
+                    QCheckBox { font-size: 12px; color: #a0a0a5; padding: 4px 0; spacing: 12px; }
+                    QCheckBox::indicator { width: 14px; height: 14px;
+                        border: 1px solid #55555a; border-radius: 2px; }
+                    QCheckBox::indicator:checked { background-color: #ccff00; border-color: #ccff00; }
+                    QCheckBox::indicator:hover { border-color: #ccff0080; }
+                """)
+                if task_id is not None and self._worker:
+                    cb.toggled.connect(
+                        lambda checked, tid=task_id: self._on_checkbox(tid, checked)
+                    )
+                if is_done:
+                    done_count += 1
+                card_layout.addWidget(cb)
 
-    def _update_progress(self) -> None:
-        """更新所有进度条（复选框 toggled 触发）。"""
-        # 遍历所有卡片，重新计算进度
-        total_tasks = 0
-        total_done = 0
-        days = 0
+            line = QFrame()
+            line.setFrameShape(QFrame.HLine)
+            line.setStyleSheet("color: #1f1f22;")
+            card_layout.addWidget(line)
 
+            total = len(day_tasks)
+            progress = QProgressBar()
+            progress.setRange(0, total)
+            progress.setValue(done_count)
+            progress.setFormat(f"已完成 {done_count}/{total}")
+            progress.setFixedHeight(16)
+            progress.setStyleSheet("""
+                QProgressBar { border: none; border-radius: 4px; text-align: center;
+                    font-size: 9px; color: #050505; background-color: #1a1a1d;
+                    font-weight: 800; letter-spacing: 1px; }
+                QProgressBar::chunk { background-color: #ccff00; border-radius: 4px; }
+            """)
+            card_layout.addWidget(progress)
+            self.plan_layout.addWidget(card)
+
+        self.plan_layout.addStretch()
+        self._update_overall()
+
+    def _on_checkbox(self, task_id: int, checked: bool) -> None:
+        if self._worker:
+            self._worker.mark_task(task_id, checked)
+        self._update_overall()
+
+    def _update_overall(self) -> None:
+        total = 0
+        done = 0
         for i in range(self.plan_layout.count()):
             item = self.plan_layout.itemAt(i)
             if not item or not item.widget():
                 continue
             card = item.widget()
-            # 只处理 QFrame 卡片
             if not isinstance(card, QFrame):
                 continue
-
-            checkboxes = card.findChildren(QCheckBox)
-            progress_bar = card.findChildren(QProgressBar)
-            if not progress_bar:
+            cbs = card.findChildren(QCheckBox)
+            pbs = card.findChildren(QProgressBar)
+            if not pbs:
                 continue
+            d = sum(1 for cb in cbs if cb.isChecked())
+            t = len(cbs)
+            pbs[0].setValue(d)
+            pbs[0].setFormat(f"已完成 {d}/{t}")
+            done += d
+            total += t
 
-            done = sum(1 for cb in checkboxes if cb.isChecked())
-            total = len(checkboxes)
-            days += 1
-
-            progress_bar[0].setValue(done)
-            progress_bar[0].setFormat(f"已完成 {done}/{total}")
-
-            total_done += done
-            total_tasks += total
-
-        # 更新整体进度
-        if total_tasks > 0:
-            pct = int(total_done / total_tasks * 100)
+        if total > 0:
+            pct = int(done / total * 100)
             self.progress_bar.setValue(pct)
-            self.progress_bar.setFormat(f"整体进度: {pct}% ({total_done}/{total_tasks})")
+            self.progress_bar.setFormat(f"整体进度: {pct}% ({done}/{total})")
+        self.label_completed.setText(
+            f"已完成: {done}/{total} 项" if total > 0 else "已掌握模块: 无"
+        )
+
+    def _clear_plan(self) -> None:
+        while self.plan_layout.count():
+            item = self.plan_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def _show_empty(self) -> None:
+        self._clear_plan()
+        label = QLabel("请设置目标参数并生成计划")
+        label.setStyleSheet(
+            "color: #55555a; font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 60px 40px;"
+        )
+        label.setAlignment(Qt.AlignCenter)
+        self.plan_layout.addWidget(label)
+
+    def _show_error(self, msg: str) -> None:
+        label = QLabel(f"⚠ {msg}")
+        label.setStyleSheet(
+            "color: #ff3333; font-size: 11px; font-weight: 700; padding: 20px 40px;"
+        )
+        label.setAlignment(Qt.AlignCenter)
+        self.plan_layout.addWidget(label)
+
+    def _plan_to_markdown(self) -> str:
+        lines = ["# 学习计划\n"]
+        for i in range(self.plan_layout.count()):
+            item = self.plan_layout.itemAt(i)
+            if not item or not item.widget():
+                continue
+            card = item.widget()
+            if not isinstance(card, QFrame):
+                continue
+            header = card.findChildren(QLabel)
+            checkboxes = card.findChildren(QCheckBox)
+            if header:
+                lines.append(f"## {header[0].text()}\n")
+            for cb in checkboxes:
+                mark = "✅" if cb.isChecked() else "⬜"
+                lines.append(f"- {mark} {cb.text()}")
+            lines.append("")
+        return "\n".join(lines)

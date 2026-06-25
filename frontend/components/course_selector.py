@@ -86,7 +86,7 @@ class CourseSelector(QWidget):
                 background-color: #1e2231;
                 color: #e8eaf0;
                 border: 1px solid #2a2e3d;
-                border-radius: 6px;
+                border-radius: 8px;
                 padding: 6px 12px;
                 font-size: 13px;
                 font-weight: 500;
@@ -103,14 +103,14 @@ class CourseSelector(QWidget):
                 background-color: #1c2030;
                 color: #e8eaf0;
                 border: 1px solid #2a2e3d;
-                border-radius: 6px;
+                border-radius: 8px;
                 padding: 4px;
                 selection-background-color: #6c63ff40;
                 outline: none;
             }
             QComboBox QAbstractItemView::item {
                 padding: 6px 12px;
-                border-radius: 4px;
+                border-radius: 6px;
             }
             QComboBox QAbstractItemView::item:hover {
                 background-color: #242838;
@@ -128,7 +128,7 @@ class CourseSelector(QWidget):
                     background-color: transparent;
                     color: #8b8fa3;
                     border: none;
-                    border-radius: 6px;
+                    border-radius: 8px;
                     font-size: 16px;
                     font-weight: 600;
                 }

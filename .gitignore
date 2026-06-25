@@ -18,10 +18,15 @@ knowledge_base/models/
 
 # ChromaDB 持久化数据（运行时生成）
 knowledge_base/index/chroma/
+knowledge_base/index/*.db
 
 # 应用日志
 knowledge_base/index/logs/
+knowledge_base/logs/
 logs/
+
+# 崩溃日志
+crash.log
 
 # IDE 配置
 .vscode/
