@@ -34,3 +34,6 @@ crash.log
 *.swp
 *.swo
 app_output.log
+.reasonix/
+app_output.log
+crash.log
