@@ -310,19 +310,26 @@ class SuperTutorAgent:
 
     @staticmethod
     def _check_disk_space(file_path: Path) -> None:
-        """索引前检查磁盘剩余空间（TECH_DESIGN §9 #⑭）。"""
+        """索引前检查目标存储目录磁盘空间（TECH_DESIGN §9 #⑭）。"""
         try:
-            usage = shutil.disk_usage(file_path.parent)
+            # ★ 改检查目标存储目录而非源文件目录
+            from backend.config import settings
+            target_dir = settings.storage_root_path
+            usage = shutil.disk_usage(target_dir)
             file_size = file_path.stat().st_size
-            estimated_index = file_size * 0.5  # 粗略预估 ChromaDB + BM25
-            required = (file_size + estimated_index) * 2
+            # ★ ChromaDB+BM25 索引实际约为源文件 20%
+            estimated_index = file_size * 0.2
+            # ★ 需要 1.2 倍即可（去掉 *2 的过度保守要求）
+            required = int((file_size + estimated_index) * 1.2)
             if usage.free < required:
                 raise OSError(
-                    f"磁盘空间不足：需要 {required / 1024 / 1024:.0f} MB，"
-                    f"剩余 {usage.free / 1024 / 1024:.0f} MB"
+                    f"磁盘空间不足：需要约 {required / 1024 / 1024:.0f} MB，"
+                    f"「{target_dir}」剩余 {usage.free / 1024 / 1024:.0f} MB"
                 )
         except FileNotFoundError:
-            pass  # 文件还不存在，跳过检查
+            pass
+        except PermissionError:
+            pass  # 权限不足时跳过检查
 
     @staticmethod
     def _classify_error(exc: Exception) -> str:
