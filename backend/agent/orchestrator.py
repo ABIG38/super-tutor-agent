@@ -183,8 +183,36 @@ class SuperTutorAgent:
                 "doc_type": info.get("doc_type", "textbook"),
                 "course": info.get("course", ""),
                 "chunk_count": info.get("chunk_count", 0),
+                "file_path": info.get("file_path", ""),
             })
         return docs
+
+    def preview_document(self, filename: str) -> Dict:
+        """★ F-05: 重新解析文档并返回纯文本预览。
+
+        Returns:
+            {"ok": True, "text": str, "filename": str, "size": int}
+            {"ok": False, "reason": str}
+        """
+        if filename not in self._sources:
+            return {"ok": False, "reason": "not_found"}
+
+        file_path = self._sources[filename].get("file_path", "")
+        if not file_path or not Path(file_path).exists():
+            return {"ok": False, "reason": "文件已不存在，请重新上传"}
+
+        try:
+            doc = self.parser.parse(file_path, doc_type=self._sources[filename].get("doc_type", "textbook"))
+            return {
+                "ok": True,
+                "text": doc.text,
+                "filename": doc.filename,
+                "size": len(doc.text),
+                "scanned": doc.scanned,
+            }
+        except Exception as e:
+            logger.error("预览失败: {} — {}", filename, e)
+            return {"ok": False, "reason": str(e)}
 
     def overwrite_document(self, file_path: str, doc_type: str = "textbook", course: str = "") -> Dict:
         """覆盖已有文档：先删除旧索引，再重新索引。"""

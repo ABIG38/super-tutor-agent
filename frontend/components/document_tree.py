@@ -82,6 +82,7 @@ class DocumentTree(QWidget):
         """)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
+        self.tree.itemDoubleClicked.connect(self._on_double_click)  # ★ F-05
         layout.addWidget(self.tree)
         self._show_empty_state()
 
@@ -150,6 +151,33 @@ class DocumentTree(QWidget):
             "disk_full": "磁盘空间不足，请清理后重试",
         }
         return _map.get(reason, reason)
+
+    def _on_double_click(self, item, _column) -> None:
+        """★ F-05: 双击文档项时打开预览。"""
+        filename = item.data(0, Qt.UserRole)
+        if not filename:
+            return
+        self._preview_file(filename)
+
+    def _preview_file(self, filename: str) -> None:
+        """从 worker 获取预览文本并弹窗显示。"""
+        if self._worker is None:
+            return
+        from frontend.components.preview_dialog import DocumentPreviewDialog
+
+        result = self._worker.agent.preview_document(filename)
+        if not result.get("ok"):
+            QMessageBox.warning(self, "预览失败", result.get("reason", ""))
+            return
+
+        dialog = DocumentPreviewDialog(
+            title=result.get("filename", filename),
+            text=result.get("text", ""),
+            size=result.get("size", 0),
+            scanned=result.get("scanned", False),
+            parent=self,
+        )
+        dialog.exec()
 
     def _show_context_menu(self, pos) -> None:
         item = self.tree.itemAt(pos)
