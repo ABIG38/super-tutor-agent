@@ -44,25 +44,27 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        用户界面 (CLI / Streamlit Web)             │
+│                     PySide6 桌面窗口                              │
+│  ┌──────────┐  ┌────────────┐  ┌──────────────────┐           │
+│  │ 知识库列表 │  │  问答对话页  │  │  复习规划+进度    │           │
+│  └──────────┘  └────────────┘  └──────────────────┘           │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │
+                           │ signals + QThread
 ┌──────────────────────────▼──────────────────────────────────────┐
-│                      Orchestrator (Agent)                        │
-│                   LangChain Agent 编排层                          │
-│     (路由到文档处理 / 检索 / 规划 等工具)                          │
+│                   SuperTutorAgent (orchestrator)                 │
+│         编排：文档处理 / 混合检索+精排 / 规划+追踪               │
 └────┬──────────┬──────────────┬──────────────────┬───────────────┘
      │          │              │                  │
 ┌────▼───┐ ┌───▼──────┐ ┌─────▼──────┐  ┌───────▼────────┐
-│  文档    │ │  检索     │ │  规划       │  │  对话管理        │
-│  引擎    │ │  引擎     │ │  引擎       │  │  (上下文/记忆)    │
+│  文档    │ │  检索     │ │  规划       │  │  进度追踪       │
+│  引擎    │ │  引擎     │ │  引擎       │  │  (SQLite)       │
 └────┬───┘ └───┬──────┘ └─────┬──────┘  └───────┬────────┘
      │          │              │                  │
 ┌────▼──────────▼──────────────▼──────────────────▼─────────────┐
 │                       基础设施层                                 │
 │  ┌──────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
-│  │ ChromaDB │  │ 文件系统      │  │ LLM API (超长上下文)     │   │
-│  │ / FAISS  │  │ (原始文档)    │  │ + Context Caching       │   │
+│  │ ChromaDB │  │ BM25 + RRF   │  │ LLM API (DeepSeek)      │   │
+│  │ (向量库)  │  │ + Reranker   │  │ + 流式生成              │   │
 │  └──────────┘  └──────────────┘  └─────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -84,13 +86,18 @@
 
 | 层级 | 技术 |
 |------|------|
-| **开发环境** | Cursor / Windsurf (AI IDE) |
-| **核心框架** | Python 3.11+ · LangChain |
-| **LLM** | 支持 1M+ Token 窗口的云端大模型（含 Context Caching） |
-| **向量数据库** | ChromaDB / FAISS |
-| **文档解析** | PyMuPDF · python-docx · markdown-it |
-| **关键词检索** | rank-bm25 |
-| **Web 界面** | Streamlit（可选） |
+| **桌面 UI** | PySide6 (Qt for Python) |
+| **核心框架** | Python 3.11+ |
+| **LLM** | DeepSeek Chat API (OpenAI 兼容) |
+| **向量数据库** | ChromaDB (本地持久化) |
+| **Embedding** | BAAI/bge-small-zh-v1.5 (中文优化) |
+| **关键词检索** | rank-bm25 + jieba 分词 |
+| **精排** | BAAI/bge-reranker-base (Cross-Encoder) |
+| **融合** | RRF 倒数秩融合 |
+| **文档解析** | PyMuPDF · python-docx |
+| **配置** | Pydantic Settings |
+| **日志** | loguru (脱敏) |
+| **打包** | PyInstaller |
 
 ---
 
@@ -99,40 +106,47 @@
 ```
 super-tutor/
 ├── 📂 backend/                  # 后端代码
-│   ├── agent/                   # LangChain Agent 编排
-│   │   ├── orchestrator.py      # Agent 主路由
-│   │   ├── document_tool.py     # 文档处理工具
-│   │   ├── retrieval_tool.py    # 检索工具
-│   │   └── planning_tool.py     # 规划工具
+│   ├── agent/                   # Agent 编排
+│   │   ├── orchestrator.py      # SuperTutorAgent 主路由
+│   │   ├── planner.py           # 复习计划生成
+│   │   └── tracker.py           # SQLite 进度追踪
 │   ├── document/                # 文档引擎
-│   │   ├── parser.py            # 文档解析器
-│   │   ├── splitter.py          # 语义切分器
-│   │   └── indexer.py           # 索引构建
+│   │   ├── parser.py            # PDF/DOCX/MD/TXT 解析
+│   │   └── splitter.py          # 语义切分 (800字符)
 │   ├── retrieval/               # 检索引擎
-│   │   ├── vector_store.py      # 向量数据库操作
+│   │   ├── vector_store.py      # ChromaDB 向量库
 │   │   ├── bm25_search.py       # BM25 关键词检索
-│   │   └── hybrid_search.py     # 混合检索融合
+│   │   ├── hybrid_search.py     # RRF 混合检索融合
+│   │   └── reranker.py          # Cross-Encoder 精排
 │   ├── llm/                     # LLM 交互
-│   │   ├── client.py            # API 客户端
-│   │   └── caching.py           # Context Caching
-│   └── config.py                # 全局配置
-├── 📂 frontend/                 # Web 前端（Streamlit）
-│   ├── app.py                   # 主应用
-│   ├── pages/                   # 多页面
-│   │   ├── chat.py
-│   │   ├── documents.py
-│   │   └── plan.py
-│   └── components/              # 可复用组件
-├── 📂 knowledge_base/           # 用户上传文档存储
+│   │   └── client.py            # CitationLLM (流式+溯源)
+│   ├── config.py                # Pydantic 全局配置
+│   ├── model_checker.py         # 模型检测+下载 (F-20)
+│   └── worker.py                # QThread 后台工作线程
+├── 📂 frontend/                 # PySide6 桌面
+│   ├── desktop_app.py           # 主窗口 (无边框+三区布局)
+│   ├── pages/
+│   │   ├── chat_page.py         # 问答页 (流式渲染)
+│   │   └── plan_page.py         # 规划+进度页
+│   └── components/
+│       ├── document_tree.py     # 知识库文档树
+│       ├── course_selector.py   # 课程选择器
+│       └── settings_dialog.py   # 设置弹窗
+├── 📂 tests/                    # 测试 (49 tests)
+│   ├── document/test_parser.py
+│   ├── document/test_splitter.py
+│   ├── retrieval/test_bm25.py
+│   ├── retrieval/test_hybrid.py
+│   ├── agent/test_orchestrator.py
+│   └── llm/test_client.py
+├── 📂 knowledge_base/           # 本地数据存储
 │   ├── raw/                     # 原始文档
-│   └── index/                   # 索引文件
-├── 📂 tests/                    # 测试
-│   ├── test_retrieval.py
-│   └── test_planning.py
-├── 📄 项目需求说明书.md          # 项目需求文档
-├── 📄 README.md                 # 本文件
-├── 📄 requirements.txt          # Python 依赖
-└── 📄 .env.example              # 环境变量示例
+│   ├── index/                   # ChromaDB + BM25 + SQLite
+│   └── models/                  # Embedding/Reranker 模型文件
+├── 📄 super-tutor.spec          # PyInstaller 打包配置
+├── 📄 requirements.txt
+├── 📄 .env.example
+└── 📄 README.md
 ```
 
 ---
@@ -142,65 +156,67 @@ super-tutor/
 ### 前置条件
 
 - Python 3.11+
-- 一个支持超长上下文的 LLM API Key（如 DeepSeek、Gemini 等）
+- 一个支持超长上下文的 LLM API Key（如 DeepSeek）
+- Windows 10/11 64-bit（阶段一仅支持 Windows）
 
 ### 安装
 
 ```bash
 # 克隆项目
-git clone <your-repo-url>
+git clone https://github.com/ABIG38/super-tutor.git
 cd super-tutor
 
 # 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+python -m venv .venv
+.venv\Scripts\activate   # Windows
 
 # 安装依赖
 pip install -r requirements.txt
 
-# 配置环境变量
+# 配置 API Key
 cp .env.example .env
-# 编辑 .env 填入你的 API Key
+# 编辑 .env，填入 OPENAI_API_KEY=sk-xxx
 ```
+
+### 启动
+
+```bash
+python main.py
+```
+
+首次启动会自动检测模型文件，缺失时引导下载（约 1.2GB）。
 
 ### 使用
 
+1. **上传教材**：左侧面板点击「+ 添加」，选择 PDF/DOCX/MD/TXT 文件
+2. **提问**：在问答 Tab 输入问题，系统基于教材内容回答并标注来源
+3. **生成计划**：在计划 Tab 设置天数和每日学时，点击生成
+
+### 打包为 exe
+
 ```bash
-# CLI 模式
-python main.py
-
-# Web 模式（Streamlit）
-streamlit run frontend/app.py
+# 先确保模型文件已下载到 knowledge_base/models/
+pip install pyinstaller
+pyinstaller super-tutor.spec
+# 产出 dist/super-tutor.exe
 ```
 
-### 上传教材并提问
+分发时将 `dist/super-tutor.exe` 与 `knowledge_base/models/` 目录一起打包。
 
-```
-> 上传教材：数据结构（C语言版）.pdf
-> 上传成功！开始索引...
-> 索引完成，可开始对话。
->
-> 提问：什么是时间复杂度？如何计算？
->
-> 回答：
-> 时间复杂度是衡量算法执行时间随输入规模增长的增长率...
-> [来源：《数据结构（C语言版）》第1章 第1.2节]
-```
 
 ---
 
 ## 📊 项目里程碑
 
-| 里程碑 | 内容 | 周期 |
+| 里程碑 | 内容 | 状态 |
 |--------|------|------|
-| M1 基础框架 | LangChain Agent 骨架、CLI 交互 | 1 周 |
-| M2 文档引擎 | 文档上传/解析/切分/索引 | 1 周 |
-| M3 检索问答 | 混合检索 + 溯源生成 | 1-2 周 |
-| M4 缓存加速 | Context Caching 接入 | 0.5 周 |
-| M5 规划模块 | 复习计划自动生成 | 1 周 |
-| M6 Web 界面 | Streamlit 前端 | 1 周 |
-| M7 测试优化 | 幻觉率评估、性能调优 | 1 周 |
+| M1 基础框架 | config/日志/文档解析/LLM 客户端 | ✅ 完成 |
+| M2 文档引擎 | 文档上传/解析/切分/向量索引 | ✅ 完成 |
+| M3 检索问答 | 混合检索(Vector+BM25+RRF)+Reranker+溯源生成 | ✅ 完成 |
+| M4 学习规划 | 复习计划生成 + SQLite 进度追踪 | ✅ 完成 |
+| M5 PySide6 桌面 | 无边框窗口 + 三区布局 + 流式问答 | ✅ 完成 |
+| M6 测试优化 | 49 个测试 + 边界处理 + 打包配置 | ✅ 完成 |
+| M7 阶段二 | 多轮对话 / Context Caching / 学习反馈闭环 | 🔲 待启动 |
 
 ---
 
