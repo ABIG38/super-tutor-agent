@@ -8,17 +8,35 @@ import chromadb
 from chromadb.utils import embedding_functions
 from loguru import logger
 
+from backend.config import settings
+
 class VectorStore:
-    """ChromaDB Vector Store Wrapper."""
+    """ChromaDB Vector Store Wrapper — 使用中文 BGE Embedding。"""
     
-    def __init__(self, db_dir: str = "knowledge_base/index/chroma"):
+    def __init__(self, db_dir: str | None = None):
+        # ★ A5：使用 settings 中的中文模型 + 配置离线模式
+        if settings.transformers_offline:
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            os.environ["HF_HUB_OFFLINE"] = "1"
+        if settings.hf_home:
+            os.environ["HF_HOME"] = settings.hf_home
+        else:
+            os.environ.setdefault("HF_HOME", str(settings.models_dir))
+
+        if db_dir is None:
+            db_dir = str(settings.chroma_dir)
         os.makedirs(db_dir, exist_ok=True)
+
         self.client = chromadb.PersistentClient(path=db_dir)
-        # Use a lightweight sentence-transformers model
-        self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+
+        # ★ 中文 Embedding: BAAI/bge-small-zh-v1.5
+        logger.info("加载 Embedding 模型: {}", settings.embedding_model)
+        self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=settings.embedding_model,
+        )
         self.collection = self.client.get_or_create_collection(
             name="supertutor_chunks",
-            embedding_function=self.embedding_fn
+            embedding_function=self.embedding_fn,
         )
 
     def add_chunks(self, chunks: List[Dict]) -> None:
