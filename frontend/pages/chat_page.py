@@ -35,6 +35,8 @@ class AskThread(QThread):
 
 
 class ChatPage(QWidget):
+    plan_generated = Signal()  # ★ 计划生成后通知刷新知识库
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._agent = None
@@ -329,5 +331,6 @@ class ChatPage(QWidget):
         if self._current_session_id:
             append_message(self._current_session_id, "assistant", text)
         self._render_message("assistant", text)
+        self.plan_generated.emit()  # ★ 通知刷新知识库
         sb = self.browser.verticalScrollBar()
         sb.setValue(sb.maximum())

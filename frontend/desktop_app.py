@@ -143,6 +143,7 @@ class SuperTutorWindow(QMainWindow):
         splitter.addWidget(self.doc_tree)
         self.chat_page = ChatPage()
         self.chat_page.set_agent(self.agent)
+        self.chat_page.plan_generated.connect(lambda: self.doc_tree._refresh())  # ★ 计划生成后刷新树
         splitter.addWidget(self.chat_page)
         splitter.setSizes([260, 740])
         splitter.setChildrenCollapsible(False)
