@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Callable
 
 from loguru import logger
 
@@ -101,14 +100,12 @@ def check_models(models_dir: Path | None = None) -> CheckResult:
 def download_model(
     model_name: str,
     models_dir: Path | None = None,
-    progress_callback: Callable[[int, int], None] | None = None,
 ) -> bool:
     """下载单个 HuggingFace 模型到本地。
 
     Args:
         model_name: HuggingFace 模型 ID，如 "BAAI/bge-small-zh-v1.5"。
         models_dir: 缓存目录。
-        progress_callback: 进度回调 (current, total)。
 
     Returns:
         True 表示下载成功。
@@ -157,15 +154,11 @@ def download_model(
         return False
 
 
-def download_all_missing(
-    result: CheckResult,
-    progress_callback: Callable[[str, int, int], None] | None = None,
-) -> dict[str, bool]:
+def download_all_missing(result: CheckResult) -> dict[str, bool]:
     """下载所有缺失/损坏的模型。
 
     Args:
         result: check_models() 的返回值。
-        progress_callback: 进度回调 (model_name, current, total)。
 
     Returns:
         {model_name: success_bool}
@@ -179,10 +172,7 @@ def download_all_missing(
             logger.warning("未知模型类型: {}", name)
             outcomes[name] = False
             continue
-        ok = download_model(model_id, progress_callback=(
-            lambda c, t, n=name: progress_callback(n, c, t) if progress_callback else None
-        ))
-        outcomes[name] = ok
+        outcomes[name] = download_model(model_id)
 
     return outcomes
 

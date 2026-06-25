@@ -45,9 +45,9 @@ class SuperTutorAgent:
         self.hybrid = HybridSearcher(self.vector_store, self.bm25)
         self.reranker = Reranker()  # ★ B3/B4: Cross-Encoder 精排
 
-        api_key = os.environ.get("OPENAI_API_KEY", "dummy_key")
-        api_base = os.environ.get("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
-        model = os.environ.get("OPENAI_MODEL", "deepseek-chat")
+        api_key = settings.llm_api_key if settings.llm_api_key != "MISSING_KEY" else os.environ.get("OPENAI_API_KEY", "dummy_key")
+        api_base = os.environ.get("OPENAI_BASE_URL") or settings.llm_api_base
+        model = os.environ.get("OPENAI_MODEL") or settings.llm_model
         self.llm = CitationLLM(api_key=api_key, api_base=api_base, model=model)
 
         self.tracker = StudyTracker()
