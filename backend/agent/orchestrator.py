@@ -119,6 +119,32 @@ class SuperTutorAgent:
     def cancel_stream(self) -> None:
         self.llm.cancel_stream()
 
+    # ── 会话管理 ──────────────────────────────────
+
+    def chat_new(self, name: str = "") -> Dict:
+        import backend.chat_store as cs
+        return cs.new_session(name)
+
+    def chat_list(self) -> List[Dict]:
+        import backend.chat_store as cs
+        return cs.list_sessions()
+
+    def chat_delete(self, session_id: str) -> None:
+        import backend.chat_store as cs
+        cs.delete_session(session_id)
+
+    def chat_rename(self, session_id: str, name: str) -> None:
+        import backend.chat_store as cs
+        cs.rename_session(session_id, name)
+
+    def chat_messages(self, session_id: str) -> List[Dict]:
+        import backend.chat_store as cs
+        return cs.load_messages(session_id)
+
+    def chat_append(self, session_id: str, role: str, content: str) -> None:
+        import backend.chat_store as cs
+        cs.append_message(session_id, role, content)
+
     # ── 计划生成 ──────────────────────────────────
 
     def generate_plan(self, days: int = 30, hours: int = 2, course: str = "") -> str:
