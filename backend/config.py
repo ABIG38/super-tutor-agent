@@ -114,3 +114,66 @@ except Exception as e:
     print(f"[config] 配置加载警告: {e}", file=sys.stderr)
     # 用占位值创建实例以便应用能启动到设置界面
     settings = Settings(llm_api_key="MISSING_KEY")
+
+
+# ── 日志初始化 ────────────────────────────────────────
+
+def init_logging() -> None:
+    """初始化 loguru 日志系统。
+
+    - 写入 {storage_root}/logs/app.log
+    - 按天滚动，保留 N 天
+    - 脱敏 API Key 和用户提问原文
+    - 不 raise，任何错误静默回退到 stderr
+
+    应在应用入口 (main.py) 最早期调用。
+    """
+    import re
+    import sys
+    from loguru import logger
+
+    # 移除默认 handler
+    logger.remove()
+
+    # 始终保留一个 stderr handler（用于开发调试）
+    logger.add(
+        sys.stderr,
+        level="DEBUG",
+        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+        colorize=True,
+    )
+
+    # 文件 handler
+    try:
+        log_dir = settings.logs_dir
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.add(
+            log_dir / "app.log",
+            rotation="1 day",
+            retention=f"{settings.log_retention_days} days",
+            level="INFO",
+            encoding="utf-8",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message}",
+            filter=_sanitize_record,  # ★ 脱敏
+        )
+        logger.info("日志系统初始化完成: {}", log_dir / "app.log")
+    except Exception as e:
+        logger.warning("无法创建日志文件: {}", e)
+
+
+def _sanitize_record(record: dict) -> bool:
+    """日志脱敏 filter — mask API Key 和用户提问原文。"""
+    import re
+    msg = record.get("message", "")
+    if isinstance(msg, str):
+        # Mask API Key (sk-...)
+        msg = re.sub(r"sk-[A-Za-z0-9]{20,}", "sk-***", msg)
+        # Mask question 字段（JSON 日志中的用户提问）
+        msg = re.sub(
+            r'["\']question["\']\s*:\s*["\'][^"\']*["\']',
+            "'question': '***'",
+            msg,
+        )
+        record["message"] = msg
+    return True
