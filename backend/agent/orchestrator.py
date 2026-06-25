@@ -8,16 +8,20 @@ from typing import List, Dict, Literal, Generator
 from loguru import logger
 from dotenv import load_dotenv
 
+from backend.config import settings
 from backend.document.parser import DocumentParser
 from backend.document.splitter import chunk_document
 from backend.retrieval.vector_store import VectorStore
+from backend.retrieval.bm25_search import BM25Searcher
+from backend.retrieval.hybrid_search import HybridSearcher
+from backend.retrieval.reranker import Reranker
 from backend.llm.client import CitationLLM, ChunkForLLM
 from backend.agent.tracker import StudyTracker
 from backend.agent.planner import StudyPlanner, PlanGenerationError
 
 
 class SuperTutorAgent:
-    """Orchestrator tying together Document Parser, VectorStore, LLM, and Tracker."""
+    """Orchestrator: DocumentParser + HybridSearcher(RRF+BM25+Reranker) + LLM + Tracker."""
 
     _instance = None
     _lock = threading.Lock()
@@ -37,6 +41,9 @@ class SuperTutorAgent:
 
         self.parser = DocumentParser()
         self.vector_store = VectorStore()
+        self.bm25 = BM25Searcher()
+        self.hybrid = HybridSearcher(self.vector_store, self.bm25)
+        self.reranker = Reranker()  # ★ B3/B4: Cross-Encoder 精排
 
         api_key = os.environ.get("OPENAI_API_KEY", "dummy_key")
         api_base = os.environ.get("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
@@ -94,6 +101,9 @@ class SuperTutorAgent:
 
             self.vector_store.add_chunks(chunks)
 
+            # ★ B4: 同步 BM25 索引
+            self.hybrid.sync_chunks(chunks)
+
             # 记录来源
             self._sources[filename] = {
                 "file_path": str(file_path_obj.resolve()),
@@ -122,11 +132,12 @@ class SuperTutorAgent:
             return {"ok": False, "reason": str(e), "filename": filename}
 
     def delete_document(self, filename: str) -> Dict:
-        """删除文档：向量索引 + 来源记录。"""
+        """删除文档：向量索引 + BM25 + 来源记录。"""
         if filename not in self._sources:
             return {"ok": False, "reason": "not_found"}
         try:
             self.vector_store.delete_by_source(filename)
+            self.hybrid.sync_delete(filename)  # ★ B4: 同步 BM25 删除
             self._sources.pop(filename, None)
             self._display_names.pop(filename, None)
             logger.info("文档已删除: {}", filename)
@@ -187,28 +198,34 @@ class SuperTutorAgent:
     # ── 问答 ────────────────────────────────────────────────
 
     def ask(self, query: str, course: str = "") -> Generator[str, None, None]:
-        """Hybrid search and stream response."""
-        filter_meta = {"course": course} if course else None
-
+        """★ B4: 混合检索 (Vector+BM25+RRF) + Reranker → 流式回答。"""
         if not self._sources:
             yield "知识库为空，请先上传文档。"
             return
 
-        chunks = self.vector_store.search(query, top_k=7, filter_meta=filter_meta)
-
-        if not chunks:
-            yield "未在当前课程的文档中找到相关内容，请先上传教材或调整提问。"
+        # 1. 混合检索
+        candidates = self.hybrid.search(query, course=course)
+        if not candidates:
+            yield "未在上传文档中找到相关答案，请检查文档内容或更换提问方式。"
             return
 
+        # 2. Reranker 精排
+        final = self.reranker.rerank(query, candidates) if self.reranker.is_available() else candidates[:settings.final_top_k]
+        if not final:
+            yield "未在上传文档中找到相关答案，请检查文档内容或更换提问方式。"
+            return
+
+        # 3. 转换为 ChunkForLLM
         pydantic_chunks = [
             ChunkForLLM(
-                content=c["content"],
-                filename=c["filename"],
+                content=c.get("content", ""),
+                filename=c.get("filename", ""),
                 course=c.get("course", ""),
-                score=c.get("score", 0.0),
-            ) for c in chunks
+                score=c.get("rerank_score", c.get("rrf_score", c.get("score", 0.0))),
+            ) for c in final
         ]
 
+        # 4. 流式 LLM
         for token in self.llm.generate_with_citation_stream(query, pydantic_chunks):
             yield token
 
@@ -216,8 +233,7 @@ class SuperTutorAgent:
 
     def generate_plan(self, days: int, hours: int, course: str = "") -> Dict:
         """Generate a study plan, save it to tracker, and return tasks."""
-        filter_meta = {"course": course} if course else None
-        chunks = self.vector_store.search_raw("课程目录 章节重点 考点", top_k=15, filter_meta=filter_meta)
+        chunks = self.hybrid.search_raw("课程目录 章节重点 考点", top_k=15, course=course)
 
         completed_chapters = self.tracker.get_completed_chapters(course)
 
@@ -240,6 +256,10 @@ class SuperTutorAgent:
     def get_plan_progress(self, course: str = "") -> Dict:
         """Get current plan progress for a course."""
         return self.tracker.get_plan_progress(course)
+
+    def save(self) -> None:
+        """持久化 BM25 索引（应用关闭时调用）。"""
+        self.hybrid.save()
 
     def cancel_stream(self) -> None:
         """中断当前 LLM 流式生成。"""
