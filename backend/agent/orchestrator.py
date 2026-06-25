@@ -57,7 +57,29 @@ class SuperTutorAgent:
         self._sources: Dict[str, dict] = {}        # filename → {file_path, doc_type, course, chunk_count}
         self._display_names: Dict[str, str] = {}   # filename → 显示名
 
+        # ★ 从 ChromaDB 恢复已有文档来源（重启后不丢失）
+        self._restore_sources()
+
         self.initialized = True
+
+    # ── 启动恢复 ──────────────────────────────────
+
+    def _restore_sources(self) -> None:
+        """重启后从 ChromaDB 重建 _sources（文件仍在，内存 dict 丢失）。"""
+        try:
+            db_files = self.vector_store.get_source_files()
+            for fn, info in db_files.items():
+                self._sources[fn] = {
+                    "file_path": "",
+                    "doc_type": info.get("doc_type", "textbook"),
+                    "course": info.get("course", ""),
+                    "chunk_count": 0,
+                }
+                self._display_names[fn] = fn
+            if db_files:
+                logger.info("已恢复 {} 个文档来源: {}", len(db_files), list(db_files.keys()))
+        except Exception as e:
+            logger.warning("来源恢复失败（可能是首次启动）: {}", e)
 
     # ── 文档管理 ─────────────────────────────────────────────
 

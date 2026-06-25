@@ -146,3 +146,31 @@ class VectorStore:
         except Exception as e:
             logger.error("update_filename 失败: {}", e)
             raise
+
+    # ── 启动恢复 ────────────────────────────────────
+
+    def get_source_files(self) -> Dict[str, dict]:
+        """★ 从 ChromaDB 恢复所有文档来源（用于重启后重建 _sources）。
+
+        Returns:
+            {filename: {"doc_type": str, "course": str}}
+        """
+        self._ensure_loaded()
+        sources: Dict[str, dict] = {}
+        offset = 0
+        limit = 1000
+        while True:
+            batch = self.collection.get(limit=limit, offset=offset)
+            if not batch or not batch["ids"]:
+                break
+            metadatas = batch["metadatas"] if batch["metadatas"] else []
+            for meta in metadatas:
+                fn = meta.get("filename", "")
+                if fn and fn not in sources:
+                    sources[fn] = {
+                        "doc_type": meta.get("doc_type", "textbook"),
+                        "course": meta.get("course", ""),
+                    }
+            offset += limit
+        logger.info("从 ChromaDB 恢复 {} 个文档来源", len(sources))
+        return sources
