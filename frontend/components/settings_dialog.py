@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QFormLayout,
     QLineEdit,
-    QPushButton,
     QDialogButtonBox,
     QMessageBox,
     QLabel,
 )
+from frontend.theme import COLORS
 
 
 ENV_PATH = Path(".env")
@@ -30,12 +30,9 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("⚙️ 设置")
         self.setMinimumWidth(480)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #050505;
-                border: 1px solid #1f1f22;
-                border-radius: 8px;
-            }
+        self.setStyleSheet(f"""
+            QDialog {{ background-color: {COLORS['bg_card']}; }}
+            QLabel {{ color: {COLORS['text_primary']}; font-family: system-ui, -apple-system, sans-serif; }}
         """)
         self._setup_ui()
         self._load_env()
@@ -73,31 +70,31 @@ class SettingsDialog(QDialog):
 
         # 按钮
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.setStyleSheet("""
-            QPushButton {
+        buttons.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
-                color: #a0a0a5;
-                border: 1px solid #1f1f22;
+                color: {COLORS['text_secondary']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 4px;
                 padding: 8px 24px;
                 font-size: 11px;
                 font-weight: 800;
                 letter-spacing: 1px;
                 min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #0f0f11;
-                color: #fcfcfc;
-                border-color: #ccff0040;
-            }
-            QPushButton[text="Save"], QPushButton[text="保存"] {
-                background-color: #ccff00;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['bg_secondary']};
+                color: {COLORS['text_primary']};
+                border-color: {COLORS['accent_muted']};
+            }}
+            QPushButton[text="Save"], QPushButton[text="保存"] {{
+                background-color: {COLORS['accent']};
                 border: none;
-                color: #050505;
-            }
-            QPushButton[text="Save"]:hover, QPushButton[text="保存"]:hover {
-                background-color: #d9ff33;
-            }
+                color: {COLORS['bg_primary']};
+            }}
+            QPushButton[text="Save"]:hover, QPushButton[text="保存"]:hover {{
+                background-color: {COLORS['accent_hover']};
+            }}
         """)
         buttons.accepted.connect(self._save_env)
         buttons.rejected.connect(self.reject)
@@ -105,28 +102,23 @@ class SettingsDialog(QDialog):
 
     def _label(self, text: str) -> QLabel:
         label = QLabel(text)
-        label.setStyleSheet("color: #55555a; font-size: 11px; font-weight: 700; letter-spacing: 1px;")
+        label.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 11px; font-weight: 700; letter-spacing: 1px;")
         return label
 
     def _input_style(self) -> str:
-        return """
-            QLineEdit {
-                background-color: #0f0f11;
-                color: #fcfcfc;
-                border: 1px solid #1f1f22;
-                border-radius: 4px;
-                padding: 8px 12px;
-                font-size: 12px;
-                min-height: 20px;
-                font-family: 'Inter', 'Segoe UI';
-            }
-            QLineEdit:focus {
-                border-color: #ccff00;
-                background-color: #141417;
-            }
-            QLineEdit::placeholder {
-                color: #55555a;
-            }
+        return f"""
+            QLineEdit {{
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                padding: 10px;
+                background-color: {COLORS['bg_secondary']};
+                color: {COLORS['text_primary']};
+                font-family: system-ui, -apple-system, sans-serif;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {COLORS['accent']};
+                background-color: {COLORS['bg_card']};
+            }}
         """
 
     def _load_env(self) -> None:

@@ -18,7 +18,7 @@ from typing import ClassVar, Literal
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 # ── Pydantic 模型 ──────────────────────────────────────────────────────────

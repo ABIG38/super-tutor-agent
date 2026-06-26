@@ -1,8 +1,14 @@
 [
   {
-    "id": "bf7ace84-ab1d-4a4c-b1a1-7145fe5698c1",
+    "id": "59cab5d3-1753-4b70-be51-0d81b0ad83ab",
     "name": "课程 1",
     "organize_by": "auto",
-    "created_at": "2026-06-25T10:36:12.822862"
+    "created_at": "2026-06-26T00:01:12.089486"
+  },
+  {
+    "id": "f0f68c5d-fbc5-46e0-8e89-8cd6331352ec",
+    "name": "课程 2",
+    "organize_by": "auto",
+    "created_at": "2026-06-26T00:42:33.614447"
   }
 ]

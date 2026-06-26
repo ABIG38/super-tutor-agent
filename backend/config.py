@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="deepseek-chat", validation_alias="OPENAI_MODEL")
 
     # Embedding
-    embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    embedding_api_key: str = Field(default="", validation_alias="EMBEDDING_API_KEY")
+    embedding_api_base: str = Field(default="https://api.siliconflow.cn/v1", validation_alias="EMBEDDING_API_BASE")
+    embedding_model: str = "BAAI/bge-m3"
 
     # Chunk
     chunk_size: int = 800

@@ -1,7 +1,6 @@
 """模型检测 — 启动时检查 Embedding 模型是否存在。"""
 from __future__ import annotations
 
-from pathlib import Path
 from backend.config import settings
 
 

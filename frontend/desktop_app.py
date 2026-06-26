@@ -4,37 +4,22 @@
 from __future__ import annotations
 
 import sys
-from loguru import logger
 
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QSplitter, QTabWidget, QPushButton, QLabel, QFrame,
-    QGraphicsDropShadowEffect, QMessageBox,
+    QSplitter, QTabWidget, QPushButton, QLabel, QGraphicsDropShadowEffect, QMessageBox, QProgressBar
 )
 from PySide6.QtGui import QFont, QColor
 
 from backend.agent.orchestrator import SuperTutorAgent
-from backend.llm.client import LLMError
 from frontend.components.course_selector import CourseSelector
 from frontend.components.document_tree import DocumentTree
 from frontend.components.settings_dialog import SettingsDialog
 from frontend.pages.chat_page import ChatPage
+from frontend.pages.plan_page import PlanPage
 
-COLORS = {
-    "bg_primary": "#050505",
-    "bg_secondary": "#0f0f11",
-    "bg_tertiary": "#1a1a1d",
-    "bg_card": "#0a0a0c",
-    "accent": "#ccff00",
-    "text_primary": "#fcfcfc",
-    "text_secondary": "#a0a0a5",
-    "text_muted": "#55555a",
-    "border": "#1f1f22",
-    "border_light": "#2a2a2e",
-    "error": "#ff3333",
-    "title_bg": "rgba(5, 5, 5, 0.90)",
-}
+from frontend.theme import COLORS
 
 
 class TitleBar(QWidget):
@@ -53,7 +38,7 @@ class TitleBar(QWidget):
         layout.addWidget(self.icon_label)
 
         self.title_label = QLabel("超级导师")
-        self.title_label.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 15px; font-family: 'Segoe UI'; font-weight: 800; letter-spacing: 2px;")
+        self.title_label.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 16px; font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-weight: 900; letter-spacing: 1px;")
         layout.addWidget(self.title_label)
 
         self.course_selector = CourseSelector()
@@ -117,6 +102,9 @@ class SuperTutorWindow(QMainWindow):
         self.setAttribute(Qt.WA_TranslucentBackground)
         screen = QApplication.primaryScreen().geometry()
         self.move((screen.width() - self.width()) // 2, (screen.height() - self.height()) // 2)
+        
+        # 允许拖拽上传
+        self.setAcceptDrops(True)
 
     def _build_ui(self):
         outer = QWidget()
@@ -137,28 +125,66 @@ class SuperTutorWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.setHandleWidth(1)
-        splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {COLORS['border']}; }}")
+        splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {COLORS['border_light']}; }}")
 
         self.doc_tree = DocumentTree(self.agent)
         splitter.addWidget(self.doc_tree)
+        
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet(f"""
+            QTabWidget::pane {{ border: none; border-top: 1px solid {COLORS['border_light']}; }}
+            QTabBar::tab {{ background: {COLORS['bg_primary']}; color: {COLORS['text_secondary']}; padding: 12px 30px; font-size: 14px; font-family: system-ui, -apple-system, 'PingFang SC', sans-serif; font-weight: 700; border: none; margin-right: 2px; }}
+            QTabBar::tab:hover {{ color: {COLORS['text_primary']}; }}
+            QTabBar::tab:selected {{ color: {COLORS['accent']}; border-bottom: 3px solid {COLORS['accent']}; }}
+        """)
+
         self.chat_page = ChatPage()
         self.chat_page.set_agent(self.agent)
-        self.chat_page.plan_generated.connect(lambda: self.doc_tree._refresh())  # ★ 计划生成后刷新树
-        splitter.addWidget(self.chat_page)
+        
+        self.plan_page = PlanPage()
+        self.plan_page.set_agent(self.agent)
+        self.plan_page.plan_generated.connect(lambda: self.doc_tree._refresh())  # ★ 计划生成后刷新树
+
+        self.tab_widget.addTab(self.chat_page, "💬 问答")
+        self.tab_widget.addTab(self.plan_page, "📅 规划")
+        
+        splitter.addWidget(self.tab_widget)
         splitter.setSizes([260, 740])
         splitter.setChildrenCollapsible(False)
         layout.addWidget(splitter, stretch=1)
 
-        # 状态栏
-        self._status = QLabel("系统就绪")
-        self._status.setFixedHeight(32)
-        self._status.setStyleSheet(f"background-color: {COLORS['bg_secondary']}; border-top: 1px solid {COLORS['border']}; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; padding-left: 20px; color: {COLORS['text_muted']}; font-size: 11px; font-weight: 600;")
-        layout.addWidget(self._status)
+        # 状态栏容器
+        self.status_container = QWidget()
+        self.status_container.setFixedHeight(32)
+        self.status_container.setStyleSheet(f"background-color: {COLORS['bg_secondary']}; border-top: 1px solid {COLORS['border']}; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;")
+        status_layout = QHBoxLayout(self.status_container)
+        status_layout.setContentsMargins(20, 0, 20, 0)
+        status_layout.setSpacing(10)
+
+        self._status = QLabel("✨ 系统就绪")
+        self._status.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 11px; font-weight: 600; border: none;")
+        status_layout.addWidget(self._status)
+
+        self.global_progress = QProgressBar()
+        self.global_progress.setFixedSize(150, 10)
+        self.global_progress.setTextVisible(False)
+        self.global_progress.setStyleSheet(f"""
+            QProgressBar {{ border: none; background-color: {COLORS['bg_primary']}; border-radius: 5px; }}
+            QProgressBar::chunk {{ background-color: {COLORS['accent']}; border-radius: 5px; }}
+        """)
+        self.global_progress.setVisible(False)
+        status_layout.addWidget(self.global_progress)
+        status_layout.addStretch()
+
+        layout.addWidget(self.status_container)
 
         self.setCentralWidget(outer)
 
         # 信号
         self.title_bar.course_selector.course_changed.connect(self._on_course_change)
+        self.title_bar.course_selector.course_renamed.connect(self._on_course_rename)
+        self.doc_tree.status_update.connect(self.set_global_status)
+        self.doc_tree.plan_deleted.connect(self.plan_page._on_plan_deleted)
 
     def _startup_check(self):
         from pathlib import Path
@@ -174,25 +200,81 @@ class SuperTutorWindow(QMainWindow):
         try:
             model_status = check_models()
             if not model_status.get("embedding"):
-                self._status.setText("⚠️ Embedding 模型未下载，请运行 python -m sentence_transformers -i BAAI/bge-small-zh-v1.5")
+                self.set_global_status("⚠️ Embedding 模型未下载，请运行 python -m sentence_transformers -i BAAI/bge-small-zh-v1.5")
         except Exception:
             pass
 
-        self._status.setText("系统就绪")
+        self.set_global_status("✨ 系统就绪")
+
+    def set_global_status(self, msg: str, progress: int = -1):
+        self._status.setText(msg)
+        if progress >= 0:
+            self.global_progress.setVisible(True)
+            self.global_progress.setValue(progress)
+        else:
+            self.global_progress.setVisible(False)
 
     def _on_course_change(self, name: str):
         self.chat_page.set_course(name)
+        self.plan_page.set_course(name)
         self.doc_tree._course = name
         self.doc_tree._refresh()
-        self._status.setText(f"当前: {name}")
+        self.set_global_status(f"当前课程: {name}")
+
+    def _on_course_rename(self, old_name: str, new_name: str):
+        if hasattr(self.agent, "rename_course_documents"):
+            self.agent.rename_course_documents(old_name, new_name)
+
+    # ── 拖拽上传 ──────────────────────────────
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        for url in e.mimeData().urls():
+            file_path = url.toLocalFile()
+            if file_path:
+                from pathlib import Path
+                p = Path(file_path)
+                self.set_global_status(f"⏳ 正在上传拖拽文档: {p.name}", 0)
+                # 直接调用 ingest_document，因为拖拽暂不支持后台，简单加个UI刷新
+                QApplication.processEvents()
+                
+                # 简单回调
+                def cb(msg, val):
+                    self.set_global_status(msg, val)
+                    QApplication.processEvents()
+                    
+                r = self.agent.ingest_document(str(p), course=self.doc_tree._course, progress_callback=cb)
+                if r.get("ok"):
+                    self.doc_tree._refresh()
+                    self.set_global_status(f"✅ 已上传: {p.name}", -1)
+                elif r.get("reason") == "duplicate":
+                    if QMessageBox.question(self, "重复", f"「{p.name}」已存在，覆盖？", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+                        self.agent.delete_document(p.name)
+                        self.agent.ingest_document(str(p), course=self.doc_tree._course, progress_callback=cb)
+                        self.doc_tree._refresh()
+                        self.set_global_status(f"✅ 已覆盖上传: {p.name}", -1)
+                    else:
+                        self.set_global_status("✨ 系统就绪", -1)
+                else:
+                    QMessageBox.warning(self, "错误", f"「{p.name}」: {r.get('reason','?')}")
+
 # ── 启动 ────────────────────────────────────
 
 def main() -> None:
     app = QApplication(sys.argv)
     font = QFont()
-    font.setFamilies(["Segoe UI", "PingFang SC", "Microsoft YaHei"])
+    font.setFamilies(["system-ui", "-apple-system", "PingFang SC", "Microsoft YaHei"])
     font.setPointSize(10)
     app.setFont(font)
+    
+    app.setStyleSheet(f"""
+        QMessageBox, QInputDialog {{ background-color: {COLORS['bg_card']}; color: {COLORS['text_primary']}; }}
+        QMessageBox QLabel, QInputDialog QLabel {{ color: {COLORS['text_primary']}; }}
+        QMessageBox QPushButton, QInputDialog QPushButton {{ background-color: {COLORS['bg_primary']}; color: {COLORS['text_primary']}; border: 1px solid {COLORS['border']}; border-radius: 6px; padding: 6px 16px; min-width: 60px; }}
+        QMessageBox QPushButton:hover, QInputDialog QPushButton:hover {{ border-color: {COLORS['accent']}; color: {COLORS['accent']}; }}
+    """)
     window = SuperTutorWindow()
     window.show()
     sys.exit(app.exec())

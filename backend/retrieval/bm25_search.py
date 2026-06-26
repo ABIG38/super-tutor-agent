@@ -20,7 +20,17 @@ class BM25Searcher:
         self._corpus_path = Path(str(settings.storage_root_path) + "/index/bm25_corpus.pkl")
         self._corpus: List[Dict] = []
         self._index: BM25Okapi | None = None
+        
         self._load()
+
+    def _tokenize(self, text: str) -> List[str]:
+        """混合分词: Jieba + Bigram (N-gram)"""
+        # 1. 基础分词
+        base_tokens = [t for t in jieba.lcut(text) if len(t.strip()) > 0]
+        # 2. Bigram 滑动窗口 (忽略空白)
+        clean_text = text.replace(" ", "").replace("\n", "").replace("\t", "").replace("\r", "")
+        bigrams = [clean_text[i:i+2] for i in range(len(clean_text)-1) if len(clean_text[i:i+2].strip()) == 2]
+        return base_tokens + bigrams
 
     def add_chunks(self, chunks: List[Dict]) -> None:
         """增量追加 chunks。"""
@@ -33,20 +43,21 @@ class BM25Searcher:
             cid = f"{meta.get('filename','')}_{meta.get('chunk_index',0)}"
             if any(item["id"] == cid for item in self._corpus):
                 continue
-            tokens = [t for t in jieba.lcut(content) if len(t.strip()) > 0]
+            tokens = self._tokenize(content)
             if tokens:
-                self._corpus.append({"id": cid, "tokens": tokens, "meta": meta})
+                self._corpus.append({"id": cid, "tokens": tokens, "meta": meta, "content": content})
                 new_tokens.append(tokens)
         if not new_tokens:
             return
         all_t = [item["tokens"] for item in self._corpus if item["tokens"]]
         self._index = BM25Okapi(all_t) if all_t else None
+        self.save()
         logger.info("BM25 索引: {} chunks", len(self._corpus))
 
     def search(self, query: str, top_k: int = 5) -> List[Dict]:
         if self._index is None:
             return []
-        tokens = [t for t in jieba.lcut(query) if len(t.strip()) > 0]
+        tokens = self._tokenize(query)
         if not tokens:
             return []
         scores = self._index.get_scores(tokens)
@@ -60,13 +71,24 @@ class BM25Searcher:
             item = self._corpus[idx]
             meta = item["meta"]
             results.append({
-                "content": "",  # 需从 vector 结果补齐
+                "content": item.get("content", ""),
                 "filename": meta.get("filename", ""),
                 "course": meta.get("course", ""),
                 "score": float(score),
                 "source": "bm25",
             })
         return results
+
+    def delete_by_source(self, filename: str) -> None:
+        """删除指定文件的所有 chunks 并重建索引"""
+        original_len = len(self._corpus)
+        self._corpus = [item for item in self._corpus if item["meta"].get("filename") != filename]
+        
+        if len(self._corpus) < original_len:
+            all_t = [item["tokens"] for item in self._corpus if item["tokens"]]
+            self._index = BM25Okapi(all_t) if all_t else None
+            self.save()
+            logger.info("BM25 删除文件 '{}', 剩余 chunks: {}", filename, len(self._corpus))
 
     def save(self) -> None:
         if not self._corpus:

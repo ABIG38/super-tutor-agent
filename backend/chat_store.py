@@ -118,3 +118,16 @@ def append_message(session_id: str, role: str, content: str) -> None:
             s["msg_count"] = (s.get("msg_count", 0) or 0) + 1
             break
     _save_manifest(sessions)
+
+def clear_messages(session_id: str) -> None:
+    """清空会话的所有消息并重置计数"""
+    p = _session_path(session_id)
+    if p.exists():
+        p.write_text("", "utf-8")
+    
+    sessions = list_sessions()
+    for s in sessions:
+        if s["id"] == session_id:
+            s["msg_count"] = 0
+            break
+    _save_manifest(sessions)

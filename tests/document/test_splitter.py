@@ -8,7 +8,6 @@
     - overlap 正确性
     - 混合大小段落
 """
-import pytest
 from backend.document.splitter import chunk_document, _split_oversized_paragraph, _split_by_fixed_length
 
 

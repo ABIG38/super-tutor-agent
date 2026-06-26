@@ -36,10 +36,18 @@ class VectorStore:
         """★ 第一次使用时加载模型。"""
         if self.collection is not None:
             return
-        logger.info("延迟加载 Embedding 模型: {} ...", settings.embedding_model)
-        self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=settings.embedding_model,
-        )
+        if settings.embedding_api_key:
+            logger.info("初始化云端 Embedding 模型: {} ({}) ...", settings.embedding_model, settings.embedding_api_base)
+            self.embedding_fn = embedding_functions.OpenAIEmbeddingFunction(
+                api_key=settings.embedding_api_key,
+                api_base=settings.embedding_api_base,
+                model_name=settings.embedding_model
+            )
+        else:
+            logger.info("初始化本地 Embedding 模型: {} ...", settings.embedding_model)
+            self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=settings.embedding_model,
+            )
         self.collection = self.client.get_or_create_collection(
             name="supertutor_chunks",
             embedding_function=self.embedding_fn,
@@ -138,20 +146,46 @@ class VectorStore:
             logger.error("update_filename 失败: {}", e)
             raise
 
+    def update_display_name_metadata(self, filename: str, new_display_name: str) -> None:
+        """更新对应文件下所有 chunk 的 display_name metadata"""
+        self._ensure_loaded()
+        try:
+            existing = self.collection.get(where={"filename": filename})
+            if not existing or not existing["ids"]:
+                logger.warning("update_display_name: 未找到匹配 {} 的 chunk", filename)
+                return
+            ids = existing["ids"]
+            # 我们需要获取原本的 metadata 并在其基础上增加/修改 display_name
+            metadatas = existing["metadatas"]
+            for m in metadatas:
+                m["display_name"] = new_display_name
+            self.collection.update(
+                ids=ids, metadatas=metadatas,
+            )
+            logger.info("已更新 {} 个 chunk 的 display_name 为: {}", len(ids), new_display_name)
+        except Exception as e:
+            logger.error("update_display_name 失败: {}", e)
+            raise
+
     # ── 启动恢复 ────────────────────────────────────
 
     def get_source_files(self) -> Dict[str, dict]:
         """★ 从 ChromaDB 恢复所有文档来源（用于重启后重建 _sources）。
 
         Returns:
-            {filename: {"doc_type": str, "course": str}}
+            {filename: {"doc_type": str, "course": str, "display_name": str}}
         """
-        self._ensure_loaded()
+        # 不要调用 _ensure_loaded() 避免启动加载 embedding 卡死
+        try:
+            collection = self.collection or self.client.get_collection(name="supertutor_chunks")
+        except Exception:
+            return {}
+        
         sources: Dict[str, dict] = {}
         offset = 0
         limit = 1000
         while True:
-            batch = self.collection.get(limit=limit, offset=offset)
+            batch = collection.get(limit=limit, offset=offset)
             if not batch or not batch["ids"]:
                 break
             metadatas = batch["metadatas"] if batch["metadatas"] else []
@@ -161,6 +195,8 @@ class VectorStore:
                     sources[fn] = {
                         "doc_type": meta.get("doc_type", "textbook"),
                         "course": meta.get("course", ""),
+                        "display_name": meta.get("display_name", fn),
+                        "file_path": meta.get("file_path", ""),
                     }
             offset += limit
         logger.info("从 ChromaDB 恢复 {} 个文档来源", len(sources))

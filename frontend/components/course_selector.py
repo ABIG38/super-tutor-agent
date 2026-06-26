@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QMessageBox,
 )
+from frontend.theme import COLORS
 
 
 # ── 默认课程配置路径 ──────────────────────────────────────
@@ -66,6 +67,7 @@ class CourseSelector(QWidget):
     """
 
     course_changed = Signal(str)  # 课程名
+    course_renamed = Signal(str, str)  # old_name, new_name
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -81,40 +83,40 @@ class CourseSelector(QWidget):
 
         self.combo = QComboBox()
         self.combo.setMinimumWidth(160)
-        self.combo.setStyleSheet("""
-            QComboBox {
-                background-color: #1e2231;
-                color: #e8eaf0;
-                border: 1px solid #2a2e3d;
+        self.combo.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {COLORS['bg_secondary']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border_light']};
                 border-radius: 8px;
                 padding: 6px 12px;
                 font-size: 13px;
                 font-weight: 500;
                 min-height: 24px;
-            }
-            QComboBox:hover {
-                border-color: #6c63ff;
-            }
-            QComboBox::drop-down {
+            }}
+            QComboBox:hover {{
+                border-color: {COLORS['accent']};
+            }}
+            QComboBox::drop-down {{
                 border: none;
                 width: 24px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #1c2030;
-                color: #e8eaf0;
-                border: 1px solid #2a2e3d;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {COLORS['bg_tertiary']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border_light']};
                 border-radius: 8px;
                 padding: 4px;
-                selection-background-color: #6c63ff40;
+                selection-background-color: {COLORS['accent_muted']};
                 outline: none;
-            }
-            QComboBox QAbstractItemView::item {
+            }}
+            QComboBox QAbstractItemView::item {{
                 padding: 6px 12px;
                 border-radius: 6px;
-            }
-            QComboBox QAbstractItemView::item:hover {
-                background-color: #242838;
-            }
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background-color: {COLORS['bg_secondary']};
+            }}
         """)
         self.combo.currentIndexChanged.connect(self._on_selected)
         layout.addWidget(self.combo)
@@ -123,19 +125,19 @@ class CourseSelector(QWidget):
             btn = QPushButton(text)
             btn.setFixedSize(28, 28)
             btn.setToolTip(tip)
-            btn.setStyleSheet("""
-                QPushButton {
+            btn.setStyleSheet(f"""
+                QPushButton {{
                     background-color: transparent;
-                    color: #8b8fa3;
+                    color: {COLORS['text_secondary']};
                     border: none;
                     border-radius: 8px;
                     font-size: 16px;
                     font-weight: 600;
-                }
-                QPushButton:hover {
-                    background-color: #242838;
-                    color: #e8eaf0;
-                }
+                }}
+                QPushButton:hover {{
+                    background-color: {COLORS['bg_tertiary']};
+                    color: {COLORS['text_primary']};
+                }}
             """)
             layout.addWidget(btn)
             if text == "+":
@@ -186,10 +188,13 @@ class CourseSelector(QWidget):
         old_name = self._courses[idx]["name"]
         new_name, ok = QInputDialog.getText(self, "重命名课程", "新名称：", text=old_name)
         if ok and new_name.strip():
-            self._courses[idx]["name"] = new_name.strip()
-            save_courses(self._courses)
-            self.combo.setItemText(idx, new_name.strip())
-            self.course_changed.emit(new_name.strip())
+            new_val = new_name.strip()
+            if old_name != new_val:
+                self._courses[idx]["name"] = new_val
+                save_courses(self._courses)
+                self.combo.setItemText(idx, new_val)
+                self.course_renamed.emit(old_name, new_val)
+                self.course_changed.emit(new_val)
 
     def _delete_course(self) -> None:
         """删除当前课程。"""
