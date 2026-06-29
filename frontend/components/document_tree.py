@@ -18,6 +18,7 @@ class DocumentTree(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
+        """构建文档树界面：标题栏 + 上传按钮 + 文件树。"""
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0)
         h = QWidget(); h.setFixedHeight(48)
         h.setStyleSheet(f"background-color:{COLORS['bg_primary']};border-bottom:1px solid {COLORS['border']}")
@@ -39,6 +40,7 @@ class DocumentTree(QWidget):
         layout.addWidget(self.tree); self._refresh()
 
     def _upload(self):
+        """打开文件选择对话框，启动 UploadWorker 子线程批量上传。"""
         files, _ = QFileDialog.getOpenFileNames(self, "选择文档", "", "文档 (*.pdf *.docx *.md *.txt);;所有文件 (*)")
         if not files:
             return
@@ -53,6 +55,7 @@ class DocumentTree(QWidget):
         self.worker.start()
 
     def _on_upload_progress(self, file_path, result):
+        """单个文件上传结果回调：处理重复/失败/扫描件等情况。"""
         p = Path(file_path)
         if result.get("reason") == "duplicate":
             if QMessageBox.question(self, "重复", f"「{p.name}」已存在，覆盖？", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
@@ -81,6 +84,7 @@ class DocumentTree(QWidget):
         self._refresh()
 
     def _on_upload_finished(self):
+        """所有文件上传完毕，恢复按钮状态并刷新列表。"""
         self.btn_upload.setEnabled(True)
         self.btn_upload.setText("+ 添加")
         self.status_update.emit("✨ 系统就绪", -1)
@@ -127,6 +131,7 @@ class DocumentTree(QWidget):
                 QMessageBox.warning(self, "预览失败", f"无法预览文档：{r.get('reason', '未知错误')}")
 
     def _refresh(self):
+        """刷新文档树，显示当前课程下的文档和计划。"""
         self.tree.clear()
         docs = self._agent.get_documents(self._course)
         groups = {"textbook":"▪ 教材","past_paper":"▪ 真题"}
@@ -155,6 +160,7 @@ class DocumentTree(QWidget):
         self.tree.expandAll()
 
     def _context_menu(self, pos):
+        """右键菜单：预览、重命名、删除。"""
         item = self.tree.itemAt(pos)
         if not item or not item.parent(): return
         fn = item.data(0, Qt.UserRole)
@@ -212,6 +218,7 @@ class UploadWorker(QThread):
         self.course = course
 
     def run(self):
+        """子线程入口：逐个调用 ingest_document 上传文件。"""
         for f in self.files:
             def cb(msg, val):
                 self.status.emit(msg, val)

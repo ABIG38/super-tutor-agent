@@ -1,3 +1,4 @@
+"""意图路由器 — 规则前置短路 + LLM 智能分类，决定流量路由 (rag / chat / plan)。"""
 from typing import Literal
 from loguru import logger
 

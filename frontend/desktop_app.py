@@ -68,21 +68,25 @@ class TitleBar(QWidget):
         """)
 
     def mousePressEvent(self, e):
+        """记录鼠标按下位置，开启拖拽状态。"""
         if e.button() == Qt.LeftButton:
             self._drag_pos = e.globalPosition().toPoint()
             self._is_dragging = True
 
     def mouseMoveEvent(self, e):
+        """拖拽移动窗口。"""
         if self._is_dragging and self._drag_pos and self._parent:
             d = e.globalPosition().toPoint() - self._drag_pos
             self._parent.move(self._parent.pos() + d)
             self._drag_pos = e.globalPosition().toPoint()
 
     def mouseReleaseEvent(self, e):
+        """释放鼠标，停止拖拽。"""
         if e.button() == Qt.LeftButton:
             self._is_dragging = False
 
     def _open_settings(self):
+        """打开设置弹窗。"""
         SettingsDialog(self).exec()
 
 
@@ -95,6 +99,7 @@ class SuperTutorWindow(QMainWindow):
         self._startup_check()
 
     def _setup_window(self):
+        """设置无边框窗口、圆角、居中。"""
         self.setWindowTitle("SuperTutor")
         self.setMinimumSize(1000, 700)
         self.resize(1200, 800)
@@ -107,6 +112,7 @@ class SuperTutorWindow(QMainWindow):
         self.setAcceptDrops(True)
 
     def _build_ui(self):
+        """搭建主界面布局：标题栏 → QSplitter(文档树 | 问答/规划Tab) → 状态栏。"""
         outer = QWidget()
         outer.setObjectName("outer")
         outer.setStyleSheet(f"#outer {{ background-color: {COLORS['bg_primary']}; border: 1px solid {COLORS['border_light']}; border-radius: 12px; }}")
@@ -187,6 +193,7 @@ class SuperTutorWindow(QMainWindow):
         self.doc_tree.plan_deleted.connect(self.plan_page._on_plan_deleted)
 
     def _startup_check(self):
+        """启动检测：首次运行时提示配置 API Key。"""
         from pathlib import Path
         cfg = __import__("backend.config", fromlist=["settings"]).settings
 
@@ -200,6 +207,7 @@ class SuperTutorWindow(QMainWindow):
         self.set_global_status("✨ 系统就绪")
 
     def set_global_status(self, msg: str, progress: int = -1):
+        """更新底部状态栏文字和进度条。"""
         self._status.setText(msg)
         if progress >= 0:
             self.global_progress.setVisible(True)
@@ -208,6 +216,7 @@ class SuperTutorWindow(QMainWindow):
             self.global_progress.setVisible(False)
 
     def _on_course_change(self, name: str):
+        """课程切换：同步更新问答页、规划页、文档树。"""
         self.chat_page.set_course(name)
         self.plan_page.set_course(name)
         self.doc_tree._course = name
@@ -215,15 +224,18 @@ class SuperTutorWindow(QMainWindow):
         self.set_global_status(f"当前课程: {name}")
 
     def _on_course_rename(self, old_name: str, new_name: str):
+        """课程重命名：同步更新 sources 里的课程归属。"""
         if hasattr(self.agent, "rename_course_documents"):
             self.agent.rename_course_documents(old_name, new_name)
 
     # ── 拖拽上传 ──────────────────────────────
     def dragEnterEvent(self, e):
+        """接受拖拽文件的进入事件。"""
         if e.mimeData().hasUrls():
             e.acceptProposedAction()
 
     def dropEvent(self, e):
+        """处理拖拽上传的文件。"""
         for url in e.mimeData().urls():
             file_path = url.toLocalFile()
             if file_path:
@@ -256,6 +268,7 @@ class SuperTutorWindow(QMainWindow):
 # ── 启动 ────────────────────────────────────
 
 def main() -> None:
+    """QApplication 入口。"""
     app = QApplication(sys.argv)
     font = QFont()
     font.setFamilies(["system-ui", "-apple-system", "PingFang SC", "Microsoft YaHei"])

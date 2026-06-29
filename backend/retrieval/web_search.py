@@ -19,6 +19,7 @@ def search_web(query: str, max_results: int = 3) -> List[Dict]:
     }
     """
     def _do_search():
+        """"360 搜索请求：抓取 HTML 并用 BeautifulSoup 解析标题摘要。"""
         chunks = []
         url = f"https://www.so.com/s?q={urllib.parse.quote(query)}"
         headers = {

@@ -17,6 +17,7 @@ from backend.config import settings
 
 class BM25Searcher:
     def __init__(self):
+        """初始化 BM25 检索引擎，从磁盘恢复已有索引。"""
         self._corpus_path = Path(str(settings.storage_root_path) + "/index/bm25_corpus.pkl")
         self._corpus: List[Dict] = []
         self._index: BM25Okapi | None = None
@@ -24,7 +25,7 @@ class BM25Searcher:
         self._load()
 
     def _tokenize(self, text: str) -> List[str]:
-        """混合分词: Jieba + Bigram (N-gram)"""
+        """混合分词：Jieba 词粒度 + 字符 Bigram，提升关键词匹配查全率。"""
         # 1. 基础分词
         base_tokens = [t for t in jieba.lcut(text) if len(t.strip()) > 0]
         # 2. Bigram 滑动窗口 (忽略空白)
@@ -55,6 +56,7 @@ class BM25Searcher:
         logger.info("BM25 索引: {} chunks", len(self._corpus))
 
     def search(self, query: str, top_k: int = 5) -> List[Dict]:
+        """关键词检索：用 BM25 算法对查询和语料库打分，返回 top_k 个匹配片段。"""
         if self._index is None:
             return []
         tokens = self._tokenize(query)
@@ -91,6 +93,7 @@ class BM25Searcher:
             logger.info("BM25 删除文件 '{}', 剩余 chunks: {}", filename, len(self._corpus))
 
     def save(self) -> None:
+        """原子写入：先写临时文件再替换，防止写一半崩溃损坏索引。"""
         if not self._corpus:
             return
         self._corpus_path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,6 +106,7 @@ class BM25Searcher:
             Path(tmp).unlink(missing_ok=True)
 
     def _load(self) -> None:
+        """从磁盘加载 BM25 语料库并重建索引。"""
         if not self._corpus_path.exists():
             return
         try:

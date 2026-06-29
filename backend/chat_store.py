@@ -17,16 +17,19 @@ from backend.config import settings
 
 
 def _chats_dir() -> Path:
+    """获取聊天目录路径，目录不存在则自动创建。"""
     p = settings.storage_root_path / "index" / "chats"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def _session_path(session_id: str) -> Path:
+    """根据会话ID生成对应的 JSONL 文件路径。"""
     return _chats_dir() / f"{session_id}.jsonl"
 
 
 def _manifest_path() -> Path:
+    """获取会话清单文件 (manifest.json) 路径。"""
     return _chats_dir() / "manifest.json"
 
 
@@ -44,6 +47,7 @@ def list_sessions() -> List[Dict]:
 
 
 def _save_manifest(sessions: List[Dict]) -> None:
+    """将会话列表写回 manifest.json。"""
     _manifest_path().write_text(json.dumps(sessions, ensure_ascii=False, indent=2), "utf-8")
 
 
@@ -67,6 +71,7 @@ def new_session(name: Optional[str] = None) -> Dict:
 
 
 def delete_session(session_id: str) -> None:
+    """删除指定会话及其消息文件。"""
     sessions = [s for s in list_sessions() if s["id"] != session_id]
     _save_manifest(sessions)
     p = _session_path(session_id)
@@ -76,6 +81,7 @@ def delete_session(session_id: str) -> None:
 
 
 def rename_session(session_id: str, new_name: str) -> None:
+    """重命名指定会话。"""
     sessions = list_sessions()
     for s in sessions:
         if s["id"] == session_id:

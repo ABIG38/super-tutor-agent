@@ -33,6 +33,7 @@ class AskThread(QThread):
         self.history = history or []
 
     def run(self):
+        """子线程入口：执行 ask 流式生成并逐 token 发送。"""
         try:
             for t in self.agent.ask(self.query, self.course, self.enable_web_search, self.history):
                 self.token.emit(t)
@@ -57,12 +58,15 @@ class ChatPage(QWidget):
         self._load_sessions()
 
     def set_agent(self, agent):
+        """绑定后端 agent 实例。"""
         self._agent = agent
 
     def set_course(self, course: str):
+        """设置当前课程，用于检索过滤。"""
         self._course = course
 
     def _setup_ui(self):
+        """搭建布局：会话列表 + 对话区域 + 输入栏。"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -153,6 +157,7 @@ class ChatPage(QWidget):
         layout.addWidget(splitter)
 
     def _clear_conversation(self):
+        """清空当前会话的消息。"""
         if not self._current_session_id:
             return
         if QMessageBox.question(self, "确认", "确定要清空当前对话的所有消息吗？", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
@@ -171,6 +176,7 @@ class ChatPage(QWidget):
     # ── 会话管理 ──────────────────────────────
 
     def _load_sessions(self):
+        """从磁盘加载会话列表到面板。"""
         self.session_list.clear()
         sessions = list_sessions()
         if not sessions:
@@ -190,6 +196,7 @@ class ChatPage(QWidget):
         self._switch_session(self.session_list.item(0))
 
     def _new_session(self):
+        """创建新会话。"""
         name, ok = QInputDialog.getText(self, "新会话", "会话名称：", text=f"会话 {len(list_sessions()) + 1}")
         if not ok or not name.strip():
             name = f"会话 {len(list_sessions()) + 1}"
@@ -201,6 +208,7 @@ class ChatPage(QWidget):
         self._switch_session(item)
 
     def _switch_session(self, item):
+        """切换会话并渲染消息。"""
         if not item:
             return
         sid = item.data(Qt.UserRole)
@@ -220,6 +228,7 @@ class ChatPage(QWidget):
             self._welcome()
 
     def _render_all(self):
+        """重新渲染全部消息 HTML。"""
         html_content = self._history_html
         if self._current_answer:
             html_content += self._render_message_html("assistant", self._current_answer, True)
@@ -277,6 +286,7 @@ class ChatPage(QWidget):
             self.browser.page().runJavaScript(js)
 
     def _session_menu(self, pos):
+        """会话右键菜单：重命名/删除。"""
         item = self.session_list.itemAt(pos)
         if not item:
             return
@@ -304,12 +314,14 @@ class ChatPage(QWidget):
     # ── 问答 ──────────────────────────────────
 
     def _welcome(self):
+        """渲染欢迎页面。"""
         welcome_html = f'<div style="text-align:left;padding:40px 0;color:{COLORS["text_secondary"]};"><h1 style="color:{COLORS["text_primary"]};font-family:\'Georgia\', serif;font-weight:800;font-size:28px;">AgentOS Tutor</h1><p style="font-size:14px;">上传文档后即可提问，知识库已接入。</p></div>'
         encoded = urllib.parse.quote(welcome_html)
         js = f"setTimeout(function() {{ if(typeof updateContent === 'function') updateContent(decodeURIComponent('{encoded}')); }}, 100);"
         self.browser.page().runJavaScript(js)
 
     def _send(self):
+        """发送消息并流式接收回答。"""
         query = self.input_edit.text().strip()
         if not query:
             return
@@ -348,6 +360,7 @@ class ChatPage(QWidget):
         self.input_edit.clear()
 
     def _on_token(self, t: str):
+        """流式 token 回调：每 3 次刷新界面。"""
         self._current_answer += t
         self._token_count += 1
         
@@ -355,6 +368,7 @@ class ChatPage(QWidget):
             self._render_all()
 
     def _on_done(self):
+        """流式生成完成。"""
         if self._current_answer and self._current_session_id:
             append_message(self._current_session_id, "assistant", self._current_answer)
             self._history_html += self._render_message_html("assistant", self._current_answer, False)
@@ -363,20 +377,24 @@ class ChatPage(QWidget):
         self._current_answer = ""
 
     def _on_error(self, msg: str):
+        """流式生成出错。"""
         error_html = f'<div style="color:{COLORS["error"]};margin:8px 0;">⚠ {msg}</div>'
         self._history_html += error_html
         self._render_all()
 
     def _stop(self):
+        """停止生成。"""
         if self._agent:
             self._agent.cancel_stream()
         self._finish()
 
     def _finish(self):
+        """清理状态。"""
         self.input_edit.setEnabled(True)
         self.btn_send.setEnabled(True)
 
     def _render_message_html(self, role: str, content: str, is_streaming: bool) -> str:
+        """渲染单条消息为 HTML（支持 KaTeX、推理折叠、代码高亮）。"""
         if role == "user":
             return f'<div style="margin:16px 0;padding:16px 20px;background-color:{COLORS["bg_secondary"]};border-radius:12px;border:1px solid {COLORS["border_light"]};"><div style="color:{COLORS["text_secondary"]};font-size:11px;font-weight:700;margin-bottom:8px;font-family:\'Georgia\', serif;letter-spacing:1px;">USER</div><div style="color:{COLORS["text_primary"]};white-space:pre-wrap;font-size:14px;">{html.escape(content)}</div></div>'
         else:

@@ -44,6 +44,7 @@ class DocumentPreviewDialog(QDialog):
         self._setup_ui(title, text, size, scanned, is_markdown, original_path)
 
     def _setup_ui(self, title: str, text: str, size: int, scanned: bool, is_markdown: bool, original_path: str) -> None:
+        """搭建预览弹窗：元信息栏 + QTextBrowser 文本浏览 + 底部提示。"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
@@ -163,6 +164,7 @@ class DocumentPreviewDialog(QDialog):
         layout.addWidget(hint)
 
     def _export_file(self, title: str, text: str) -> None:
+        """导出文档内容为 .md 或 .txt 文件。"""
         from PySide6.QtWidgets import QFileDialog
         default_name = title if title.endswith(".md") else f"{title}.md"
         path, _ = QFileDialog.getSaveFileName(self, "导出文件", default_name, "Markdown Files (*.md);;Text Files (*.txt);;All Files (*)")

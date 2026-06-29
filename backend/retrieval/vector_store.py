@@ -43,6 +43,7 @@ class VectorStore:
     # ── 写入 ────────────────────────────────────
 
     def add_chunks(self, chunks: List[Dict]) -> None:
+        """将文档片段批量写入 ChromaDB（每批 100 条）。"""
         self._ensure_loaded()
         if not chunks:
             return
@@ -75,6 +76,7 @@ class VectorStore:
     def search(
         self, query: str, top_k: int = 5, filter_meta: Optional[Dict] = None,
     ) -> List[Dict]:
+        """语义检索：将查询转为向量，返回最相似的 top_k 个文档片段。"""
         self._ensure_loaded()
         where = filter_meta if filter_meta else None
 
@@ -108,10 +110,12 @@ class VectorStore:
     # ── 删除 ────────────────────────────────────
 
     def delete_by_source(self, filename: str) -> None:
+        """删除指定文件的所有向量数据。"""
         self._ensure_loaded()
         self.collection.delete(where={"filename": filename})
 
     def update_filename_metadata(self, old_filename: str, new_filename: str) -> None:
+        """批量更新 ChromaDB 中指定文件的 filename 元数据。"""
         self._ensure_loaded()
         try:
             existing = self.collection.get(where={"filename": old_filename})

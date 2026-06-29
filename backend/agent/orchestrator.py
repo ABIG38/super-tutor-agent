@@ -28,12 +28,14 @@ class SuperTutorAgent:
     _lock = threading.Lock()
 
     def __new__(cls, *args, **kwargs):
+        """线程安全的单例模式，确保全局只有一个 agent 实例。"""
         with cls._lock:
             if not cls._instance:
                 cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
+        """初始化所有子模块（解析器、检索引擎、LLM客户端、路由器），仅执行一次。"""
         if hasattr(self, "initialized") and self.initialized:
             return
         load_dotenv()
@@ -57,6 +59,7 @@ class SuperTutorAgent:
         self.initialized = True
 
     def _restore_sources(self) -> None:
+        """从 ChromaDB 恢复所有已索引文档的来源信息（用于重启后重建 _sources）。"""
         try:
             for fn, info in self.vector_store.get_source_files().items():
                 self._sources[fn] = {
@@ -111,6 +114,7 @@ class SuperTutorAgent:
             return {"ok": False, "reason": str(e)[:100], "filename": fn}
 
     def delete_document(self, filename: str) -> Dict:
+        """删除指定文档及其向量和 BM25 索引。"""
         if filename not in self._sources:
             return {"ok": False, "reason": "not_found"}
         try:
@@ -122,6 +126,7 @@ class SuperTutorAgent:
             return {"ok": False, "reason": str(e)}
 
     def rename_document(self, filename: str, new_display_name: str) -> Dict:
+        """重命名文档在 ChromaDB 中的显示名称。"""
         if filename not in self._sources:
             return {"ok": False, "reason": "not_found"}
         try:
@@ -132,6 +137,7 @@ class SuperTutorAgent:
             return {"ok": False, "reason": str(e)}
 
     def get_documents(self, course: str = "") -> List[Dict]:
+        """返回所有已索引文档列表（可按课程过滤）。"""
         return [{"filename": fn, **info} for fn, info in self._sources.items()
                 if not course or info.get("course") == course]
 
@@ -149,6 +155,7 @@ class SuperTutorAgent:
             return {"ok": False, "reason": str(e)}
 
     def _rewrite_query(self, query: str, history: list) -> str:
+        """指代消解：将用户简短追问补全为独立关键词（如 "它呢" → "B+树优点"）。"""
         if not history or len(query) > 15:
             return query
             
@@ -173,6 +180,7 @@ class SuperTutorAgent:
     # ── 问答 ──────────────────────────────────────
 
     def _compress_history(self, history: list) -> list:
+        """历史压缩：超过 8 轮对话时，将旧消息压缩为摘要以节省 token。"""
         if len(history) <= 8:
             return history
             
@@ -197,6 +205,7 @@ class SuperTutorAgent:
             return recent_history
 
     def ask(self, query: str, course: str = "", enable_web_search: bool = False, history: list = None) -> Generator[str, None, None]:
+        """RAG 问答主流程：意图识别→指代消解→双路检索→RRF融合→Reranker精排→LLM流式回答。"""
         # 1. 意图识别 (Intent Routing)
         intent = self.router.classify_intent(query, history)
         
@@ -316,6 +325,7 @@ class SuperTutorAgent:
             yield token
 
     def cancel_stream(self) -> None:
+        """取消当前流式生成。"""
         self.llm.cancel_stream()
 
     # ── 计划生成 ──────────────────────────────────
@@ -421,6 +431,7 @@ class SuperTutorAgent:
     # ── 计划进度追踪 ──────────────────────────────
 
     def clear_active_plan(self):
+        """清除当前活跃的学习计划。"""
         active_path = self.PLANS_DIR / "active_plan.json"
         if active_path.exists():
             active_path.unlink()

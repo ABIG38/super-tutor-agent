@@ -5,6 +5,7 @@ from loguru import logger
 
 class BGEReranker:
     def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3"):
+        """初始化 Reranker，从环境变量读取 API Key，无 Key 则优雅降级。"""
         self.model_name = model_name
         self.api_url = "https://api.siliconflow.cn/v1/rerank"
         # 从环境变量获取 API Key，如果没有则降级

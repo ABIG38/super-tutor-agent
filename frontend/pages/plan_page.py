@@ -27,6 +27,7 @@ class PlanThreadSafe(QThread):
         self._course = course
 
     def run(self):
+        """子线程入口：执行 plan 流式生成并逐 token 发送。"""
         try:
             full_text = ""
             for t in self._agent.generate_plan_stream(self._days, self._hours, self._start_chapter, self._end_chapter, self._course):
@@ -56,13 +57,16 @@ class PlanPage(QWidget):
         self._refresh_progress_ui()
 
     def set_agent(self, agent):
+        """绑定后端 agent 并刷新进度。"""
         self._agent = agent
         self._refresh_progress_ui()
 
     def set_course(self, course: str):
+        """设置当前课程。"""
         self._course = course
 
     def _setup_ui(self):
+        """搭建计划页面：参数设置 + 计划内容渲染 + 进度追踪。"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -227,6 +231,7 @@ class PlanPage(QWidget):
         layout.addWidget(splitter)
 
     def _welcome(self):
+        """渲染空状态欢迎页。"""
         self.browser.setHtml(
             f'<div style="text-align:center;padding:100px 0;color:{COLORS["text_muted"]};">'
             f'<h2 style="color:{COLORS["text_primary"]};">📖 专属学习计划</h2>'
@@ -237,6 +242,7 @@ class PlanPage(QWidget):
         )
 
     def _refresh_progress_ui(self):
+        """刷新今日进度条和打卡按钮状态。"""
         if not self._agent:
             return
         info = self._agent.get_active_plan_info()
@@ -274,6 +280,7 @@ class PlanPage(QWidget):
                 pass
 
     def _on_checkin(self):
+        """打卡：保存当日进度到 active_plan.json。"""
         if not self._agent: return
         info = self._agent.get_active_plan_info()
         if not info: return
@@ -288,6 +295,7 @@ class PlanPage(QWidget):
                 QMessageBox.warning(self, "打卡失败", "无法更新进度状态。")
 
     def _generate_plan(self):
+        """启动计划生成的子线程（PlanWorker）。"""
         if not self._agent:
             return
         
@@ -324,6 +332,7 @@ class PlanPage(QWidget):
         self._plan_thread.start()
 
     def _on_plan_token(self, t: str):
+        """计划流式生成回调：逐行 Markdown 渲染。"""
         self._current_plan_content += t
         self._token_count += 1
         # 每10个token刷新一次HTML，防止频繁渲染卡顿
@@ -342,6 +351,7 @@ class PlanPage(QWidget):
                 pass
 
     def _render_markdown(self, text: str, show_toc: bool = False):
+        """渲染 Markdown 为 HTML（支持 TOC、表格、代码块）。"""
         try:
             import re
             clean_text = re.sub(r'<think>.*?(</think>|$)', '', text, flags=re.DOTALL)
@@ -364,6 +374,7 @@ class PlanPage(QWidget):
             self.browser.setPlainText(text)
             
     def _render_current_day(self):
+        """单独渲染今日计划内容。"""
         info = self._agent.get_active_plan_info() if self._agent else {}
         cur_day = info.get("current_day", 1)
         
@@ -379,6 +390,7 @@ class PlanPage(QWidget):
             self._render_markdown(target_content, show_toc=False)
             
     def _on_toggle_view(self):
+        """切换「今日」/「全部计划」视图。"""
         if not self._current_plan_content:
             return
             
@@ -391,6 +403,7 @@ class PlanPage(QWidget):
             self._render_current_day()
 
     def _on_plan_deleted(self):
+        """计划被外部删除时刷新界面。"""
         self._current_plan_content = ""
         self._token_count = 0
         self._parsed_days = []
@@ -405,6 +418,7 @@ class PlanPage(QWidget):
         self._welcome()
 
     def _on_plan_done(self, text: str):
+        """计划生成完成的回调。"""
         self.btn_generate.setEnabled(True)
         self.btn_generate.setText("生成计划")
         self.btn_generate.setStyleSheet(f"""
@@ -451,6 +465,7 @@ class PlanPage(QWidget):
         self._render_current_day()
 
     def _export_file_dialog(self, title: str, text: str) -> None:
+        """另存为 .md 文件。"""
         path, _ = QFileDialog.getSaveFileName(self, "导出学习计划", title, "Markdown Files (*.md);;All Files (*)")
         if path:
             try:
@@ -461,6 +476,7 @@ class PlanPage(QWidget):
                 QMessageBox.warning(self, "导出失败", f"导出失败:\n{e}")
 
     def _export_plan(self):
+        """另存计划文件。"""
         if self._current_plan_content:
             from datetime import datetime
             default_name = f"学习计划_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"

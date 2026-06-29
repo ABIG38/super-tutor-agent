@@ -27,12 +27,15 @@ class Settings(BaseSettings):
 
     @property
     def storage_root_path(self) -> Path:
+        """将 storage_root 解析为绝对路径。"""
         return Path(self.storage_root).resolve()
     @property
     def chroma_dir(self) -> Path:
+        """ChromaDB 向量数据库持久化目录。"""
         return self.storage_root_path / "index" / "chroma"
     @property
     def models_dir(self) -> Path:
+        """模型文件存放目录。"""
         return self.storage_root_path / "models"
 
 

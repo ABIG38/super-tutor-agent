@@ -29,6 +29,7 @@ _COURSES_JSON = None
 
 
 def _courses_json() -> Path:
+    """惰性获取 courses.json 路径，首次调用时根据 settings.storage_root_path 计算。"""
     global _COURSES_JSON
     if _COURSES_JSON is None:
         _COURSES_JSON = settings.storage_root_path / "index" / "courses.json"
